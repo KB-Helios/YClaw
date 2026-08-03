@@ -109,8 +109,17 @@ export async function initRoutes(
 
     // Public discovery bypasses the tailnet check. A2A transports also bypass
     // that network check but are mounted after mandatory operator Bearer auth.
-    const a2aBridge = await createA2ABridge(services, agents);
-    a2aBridge?.mountAgentCard(expressApp);
+    let a2aBridge: Awaited<ReturnType<typeof createA2ABridge>> = null;
+    try {
+      a2aBridge = await createA2ABridge(services, agents);
+      if (a2aBridge) {
+        a2aBridge.mountAgentCard(expressApp);
+      }
+    } catch (bridgeError) {
+      logger.error('A2A bridge initialization failed — A2A routes will not be registered', {
+        error: bridgeError instanceof Error ? bridgeError.message : String(bridgeError),
+      });
+    }
 
     // Bootstrap route — after Tailscale (network boundary) but before auth
     // middleware (uses its own Bearer token, not operator API key auth)

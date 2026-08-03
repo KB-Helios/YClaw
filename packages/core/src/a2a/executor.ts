@@ -431,11 +431,13 @@ export class YClawA2AExecutor implements A2AAgentExecutor {
       return true;
     });
     const remoteAgents = [...new Set(metadata.remoteAgents)];
-    if (remoteAgents.length > 0 && operator.tier !== 'root') {
-      throw new Error('Remote A2A delegation requires a root operator');
-    }
-    for (const name of remoteAgents) {
-      if (!this.remotes.has(name)) throw new Error(`Unknown remote A2A agent: ${name}`);
+    if (remoteAgents.length > 0) {
+      if (operator.tier !== 'root') {
+        throw new Error('Remote A2A delegation requires a root operator');
+      }
+      for (const name of remoteAgents) {
+        if (!this.remotes.has(name)) throw new Error(`Unknown remote A2A agent: ${name}`);
+      }
     }
     if (localAgents.length + remoteAgents.length > this.maxParticipants) {
       throw new Error(`A2A collaboration exceeds the ${this.maxParticipants} participant limit`);

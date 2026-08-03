@@ -107,7 +107,8 @@ variable "github_repo" {
 # ─── A2A backbone ────────────────────────────────────────────────────────────
 
 variable "a2a_enabled" {
-  type = bool
+  type    = bool
+  default = true
 }
 
 variable "a2a_provider_url" {
