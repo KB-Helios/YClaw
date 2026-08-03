@@ -31,6 +31,15 @@ check "acm_requires_domain" {
   }
 }
 
+# Check blocks warn without blocking a development plan. A2A stays disabled
+# until an ACM-backed HTTPS listener exists.
+check "a2a_requires_https" {
+  assert {
+    condition     = !var.a2a_enabled || var.acm_certificate_arn != ""
+    error_message = "a2a_enabled=true was requested without an ACM certificate; ECS will receive A2A_ENABLED=false until HTTPS is configured."
+  }
+}
+
 check "github_repo_identity_required" {
   assert {
     condition     = length(var.github_owner) > 0 && length(var.github_repo) > 0

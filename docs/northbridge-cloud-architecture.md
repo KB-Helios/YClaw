@@ -63,7 +63,9 @@ Use `deploy/aws/terraform.tfvars.example` as the non-secret template. Production
 2. RBAC validates operator tier and department scope.
 3. Strategist or the request metadata chooses local and remote participants.
 4. Participants work concurrently under a read-only policy enforced at both tool
-   advertisement and execution dispatch, with independent deadlines.
+   advertisement and execution dispatch, with independent deadlines. A root operator
+   may explicitly set `allowActions` for configured local actions; existing action
+   safety and approval paths still govern every mutation.
 5. Contributions are persisted as artifacts and synthesized by Reviewer or Strategist.
 6. The terminal task, history, and final artifact remain queryable by the owning operator.
 7. Any requested mutations continue through YClaw's action safety and approval paths.

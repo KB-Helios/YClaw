@@ -64,12 +64,23 @@ describe('Persistent A2A task store', () => {
       findOne: vi.fn(async (filter: Record<string, unknown>) => documents.find((document) => (
         Object.entries(filter).every(([key, value]) => document[key] === value)
       )) ?? null),
-      replaceOne: vi.fn(async (filter: Record<string, unknown>, replacement: Record<string, any>) => {
+      updateOne: vi.fn(async (
+        filter: Record<string, unknown>,
+        update: Record<string, Record<string, any>>,
+        options?: { upsert?: boolean },
+      ) => {
         const index = documents.findIndex((document) => (
           Object.entries(filter).every(([key, value]) => document[key] === value)
         ));
-        if (index >= 0) documents[index] = structuredClone(replacement);
-        else documents.push(structuredClone(replacement));
+        if (index >= 0) {
+          documents[index] = { ...documents[index], ...structuredClone(update.$set ?? {}) };
+        } else if (options?.upsert) {
+          documents.push({
+            ...structuredClone(filter),
+            ...structuredClone(update.$setOnInsert ?? {}),
+            ...structuredClone(update.$set ?? {}),
+          });
+        }
         return { acknowledged: true, matchedCount: index >= 0 ? 1 : 0, modifiedCount: 1 };
       }),
       find: vi.fn(async (filter: Record<string, unknown>, options?: { skip?: number; limit?: number }) => {
@@ -96,9 +107,9 @@ describe('Persistent A2A task store', () => {
     expect(await store.load('task-1', context('alice'))).toEqual(expect.objectContaining({ id: 'task-1' }));
     expect(await store.load('task-1', context('bob'))).toBeUndefined();
     expect(await store.load('task-1', context('alice', 'other-tenant'))).toBeUndefined();
-    expect(collection.replaceOne).toHaveBeenCalledWith(
+    expect(collection.updateOne).toHaveBeenCalledWith(
       { tenant: 'northbridge', owner: 'alice', id: 'task-1' },
-      expect.any(Object),
+      expect.objectContaining({ $set: expect.any(Object), $setOnInsert: expect.any(Object) }),
       { upsert: true },
     );
   });

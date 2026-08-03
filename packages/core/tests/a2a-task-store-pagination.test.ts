@@ -32,6 +32,26 @@ function harness() {
     findOne: vi.fn(async (filter: Record<string, any>) => (
       documents.find((document) => matches(document, filter)) ?? null
     )),
+    updateOne: vi.fn(async (
+      filter: Record<string, any>,
+      update: Record<string, Record<string, any>>,
+      options?: { upsert?: boolean },
+    ) => {
+      const index = documents.findIndex((document) => matches(document, filter));
+      if (index >= 0) {
+        documents[index] = { ...documents[index], ...structuredClone(update.$set ?? {}) };
+      } else if (options?.upsert) {
+        documents.push({
+          ...structuredClone(filter),
+          ...structuredClone(update.$setOnInsert ?? {}),
+          ...structuredClone(update.$set ?? {}),
+        });
+      }
+      return {
+        matchedCount: index >= 0 ? 1 : 0,
+        modifiedCount: index >= 0 ? 1 : 0,
+      };
+    }),
     replaceOne: vi.fn(async (filter: Record<string, any>, replacement: Record<string, any>) => {
       const index = documents.findIndex((document) => matches(document, filter));
       if (index >= 0) documents[index] = structuredClone(replacement);
@@ -65,7 +85,7 @@ function harness() {
   const store = new PersistentA2ATaskStore({
     collection: () => collection,
   } as unknown as IStateStore);
-  return { store, documents };
+  return { store, documents, collection };
 }
 
 function context() {
@@ -164,7 +184,7 @@ describe('Persistent A2A task-store pagination', () => {
   });
 
   it('keeps one durable document under concurrent upserts of the same task', async () => {
-    const { store, documents } = harness();
+    const { store, documents, collection } = harness();
     await store.initialize();
 
     await Promise.all([
@@ -173,6 +193,13 @@ describe('Persistent A2A task-store pagination', () => {
     ]);
 
     expect(documents.filter((document) => document.id === 'same-task')).toHaveLength(1);
+    expect(collection.updateOne).toHaveBeenCalledTimes(2);
+    expect(collection.updateOne).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'same-task' }),
+      expect.objectContaining({ $set: expect.any(Object), $setOnInsert: expect.any(Object) }),
+      { upsert: true },
+    );
+    expect(collection.findOne).not.toHaveBeenCalled();
     expect(await store.load('same-task', context())).toEqual(expect.objectContaining({ id: 'same-task' }));
   });
 });

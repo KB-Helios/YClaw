@@ -87,20 +87,21 @@ export class PersistentA2ATaskStore implements TaskStore {
 
   async save(task: Task, context: ServerCallContext): Promise<void> {
     const scope = getScope(context);
-    const existing = await this.tasks.findOne({ ...scope, id: task.id });
     const now = new Date().toISOString();
-    const document: A2ATaskDocument = {
-      ...scope,
-      id: task.id,
-      contextId: task.contextId,
-      status: task.status?.state ?? TaskState.TASK_STATE_UNSPECIFIED,
-      statusTimestamp: task.status?.timestamp ?? now,
-      task: structuredClone(task),
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
-
-    await this.tasks.replaceOne({ ...scope, id: task.id }, document, { upsert: true });
+    await this.tasks.updateOne(
+      { ...scope, id: task.id },
+      {
+        $set: {
+          contextId: task.contextId,
+          status: task.status?.state ?? TaskState.TASK_STATE_UNSPECIFIED,
+          statusTimestamp: task.status?.timestamp ?? now,
+          task: structuredClone(task),
+          updatedAt: now,
+        },
+        $setOnInsert: { ...scope, id: task.id, createdAt: now },
+      },
+      { upsert: true },
+    );
   }
 
   async load(taskId: string, context: ServerCallContext): Promise<Task | undefined> {

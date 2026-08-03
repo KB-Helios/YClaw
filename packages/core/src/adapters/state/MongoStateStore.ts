@@ -53,14 +53,21 @@ class MongoCollection<T extends Record<string, unknown>> implements ICollection<
     return cursor.toArray() as unknown as T[];
   }
 
-  async updateOne(filter: FilterQuery<T>, update: UpdateQuery<T>): Promise<UpdateResult> {
+  async updateOne(
+    filter: FilterQuery<T>,
+    update: UpdateQuery<T>,
+    options?: { upsert?: boolean },
+  ): Promise<UpdateResult> {
     const mongoUpdate: Record<string, unknown> = {};
     if (update.$set) mongoUpdate.$set = update.$set;
+    if (update.$setOnInsert) mongoUpdate.$setOnInsert = update.$setOnInsert;
     if (update.$inc) mongoUpdate.$inc = update.$inc;
     if (update.$unset) mongoUpdate.$unset = update.$unset;
     if (update.$push) mongoUpdate.$push = update.$push;
 
-    const result = await this.col.updateOne(filter as any, mongoUpdate);
+    const result = await this.col.updateOne(filter as any, mongoUpdate, {
+      upsert: options?.upsert ?? false,
+    });
     return { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount };
   }
 
