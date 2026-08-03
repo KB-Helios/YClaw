@@ -14,6 +14,10 @@ export interface EventSchema {
  * are allowed through without validation (backward compatible).
  */
 export const EVENT_SCHEMAS: Record<string, EventSchema> = {
+  'a2a:cancel_request': {
+    required: ['taskId', 'tenant', 'owner'],
+    description: 'Authenticated A2A cancellation fanned out to every core replica',
+  },
   'architect:pr_review': {
     required: ['pr_number', 'status'],
     description: 'Architect completed a PR review (approved or changes_requested)',

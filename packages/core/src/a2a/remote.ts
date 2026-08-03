@@ -4,6 +4,8 @@ import { Role, TaskState } from '@a2a-js/sdk';
 
 import type { Message, Part, SendMessageRequest, Task } from '@a2a-js/sdk';
 
+const MAX_REMOTE_OUTPUT_CHARS = 100_000;
+
 export interface RemoteAgentDefinition {
   id: string;
   url: string;
@@ -89,6 +91,10 @@ function taskToText(task: Task): string {
     .join('\n\n');
 }
 
+function boundedOutput(value: string): string {
+  return value.slice(0, MAX_REMOTE_OUTPUT_CHARS);
+}
+
 export class RemoteAgentRegistry {
   private readonly definitions: Map<string, RemoteAgentDefinition>;
   private readonly clients = new Map<string, Awaited<ReturnType<ClientFactory['createFromUrl']>>>();
@@ -152,16 +158,17 @@ export class RemoteAgentRegistry {
     });
     if ('status' in result) {
       const state = result.status?.state ?? TaskState.TASK_STATE_UNSPECIFIED;
-      if ([
-        TaskState.TASK_STATE_FAILED,
-        TaskState.TASK_STATE_CANCELED,
-        TaskState.TASK_STATE_REJECTED,
-      ].includes(state)) {
-        throw new Error(`Remote A2A agent ${id} ended in ${TaskState[state]}`);
+      if (state !== TaskState.TASK_STATE_COMPLETED) {
+        throw new Error(`Remote A2A agent ${id} returned non-completed state ${TaskState[state]}`);
       }
-      return { id, output: taskToText(result) || `Remote task ${result.id} completed without text artifacts.` };
+      return {
+        id,
+        output: boundedOutput(
+          taskToText(result) || `Remote task ${result.id} completed without text artifacts.`,
+        ),
+      };
     }
 
-    return { id, output: messageToText(result) };
+    return { id, output: boundedOutput(messageToText(result)) };
   }
 }

@@ -1,8 +1,11 @@
 import { InMemoryTaskStore, DefaultRequestHandler, UnauthenticatedUser } from '@a2a-js/sdk/server';
 import { agentCardHandler, jsonRpcHandler, restHandler } from '@a2a-js/sdk/server/express';
 
+import { TaskState } from '@a2a-js/sdk';
+import type { CancelTaskRequest, Task } from '@a2a-js/sdk';
 import type { Express, Request } from 'express';
 import type { A2ARequestHandler, TaskStore, User } from '@a2a-js/sdk/server';
+import type { ServerCallContext } from '@a2a-js/sdk/server';
 import type { AgentContext } from '../bootstrap/agents.js';
 import type { ServiceContext } from '../bootstrap/services.js';
 import type { OperatorRequest } from '../operators/types.js';
@@ -14,6 +17,31 @@ import { RemoteAgentRegistry } from './remote.js';
 import { PersistentA2ATaskStore } from './task-store.js';
 
 const logger = createLogger('a2a');
+
+class CoordinatedRequestHandler extends DefaultRequestHandler {
+  constructor(
+    agentCard: ReturnType<typeof buildAgentCard>,
+    private readonly yclawTaskStore: TaskStore,
+    private readonly yclawExecutor: YClawA2AExecutor,
+  ) {
+    super(agentCard, yclawTaskStore, yclawExecutor);
+  }
+
+  override async cancelTask(params: CancelTaskRequest, context: ServerCallContext): Promise<Task> {
+    const task = await this.yclawTaskStore.load(params.id, context);
+    const state = task?.status?.state;
+    const terminal = state !== undefined && [
+      TaskState.TASK_STATE_COMPLETED,
+      TaskState.TASK_STATE_FAILED,
+      TaskState.TASK_STATE_CANCELED,
+      TaskState.TASK_STATE_REJECTED,
+    ].includes(state);
+    if (task && !terminal) {
+      await this.yclawExecutor.coordinateCancellation(params.id, context);
+    }
+    return super.cancelTask(params, context);
+  }
+}
 
 export interface A2ABridge {
   requestHandler: A2ARequestHandler;
@@ -53,8 +81,13 @@ export async function createA2ABridge(
 
   const taskStore = await createTaskStore(services);
   const remotes = new RemoteAgentRegistry();
-  const executor = new YClawA2AExecutor(agents, remotes);
-  const requestHandler = new DefaultRequestHandler(
+  const executor = new YClawA2AExecutor(
+    agents,
+    remotes,
+    services.operatorRateLimiter,
+    services.eventBus,
+  );
+  const requestHandler = new CoordinatedRequestHandler(
     buildAgentCard(agents.router),
     taskStore,
     executor,

@@ -33,6 +33,7 @@ yclaw_repos   = "KB-Helios/NorthBridge-Chat,KB-Helios/YClaw"
 
 # A2A federation. Keep tokens out of this file; provide
 # a2a_remote_agent_secrets through a protected tfvars source or -var.
+a2a_enabled               = true # Effective only when acm_certificate_arn is configured.
 a2a_provider_url          = "https://github.com/KB-Helios/YClaw"
 a2a_max_participants      = 6
 a2a_participant_timeout_ms = 600000

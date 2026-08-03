@@ -133,16 +133,10 @@ describe('YClaw A2A executor', () => {
       ['strategist', config('strategist', 'executive')],
       ['reviewer', config('reviewer', 'executive')],
     ]);
-    const execute = vi.fn(async (
-      _agent: AgentConfig,
-      _task: string,
-      _trigger: string,
-      _payload: unknown,
-      _model: unknown,
-      signal: AbortSignal,
-    ) => new Promise((_, reject) => {
-      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
-    }));
+    // Simulate a provider that ignores AbortSignal. The A2A timeout wrapper must
+    // still let cancellation return promptly, while AgentExecutor's post-chat
+    // guard prevents later tool execution in the real execution path.
+    const execute = vi.fn(async () => new Promise(() => {}));
     const agents = {
       router: {
         getAllConfigs: () => configs,
@@ -211,5 +205,179 @@ describe('YClaw A2A executor', () => {
         taskId: 'task-cancel',
         contextId: 'context-cancel',
       }));
+  });
+
+  it('falls back to an authorized local synthesizer for a department-scoped operator', async () => {
+    const configs = new Map([
+      ['architect', config('architect', 'development')],
+      ['reviewer', config('reviewer', 'executive')],
+    ]);
+    const execute = vi.fn(async (agent: AgentConfig, _task: string, trigger: string) => ({
+      executionId: `${agent.name}-${trigger}`,
+      agentName: agent.name,
+      trigger,
+      status: 'completed',
+      startedAt: new Date(),
+      completedAt: new Date(),
+      actionsTaken: [],
+      output: `${agent.name} output`,
+    }));
+    const agents = {
+      router: {
+        getAllConfigs: () => configs,
+        getConfig: (name: string) => configs.get(name),
+      },
+      executor: { execute },
+    } as unknown as AgentContext;
+    const operator = OperatorSchema.parse({
+      operatorId: 'development-operator',
+      displayName: 'Development',
+      role: 'contributor',
+      email: 'development@northbridge.test',
+      apiKeyHash: 'hash',
+      apiKeyPrefix: 'prefix',
+      tier: 'contributor',
+      departments: ['development'],
+      status: 'active',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const requestContext = new RequestContext({
+      tenant: 'northbridge',
+      message: {
+        messageId: 'message-development',
+        contextId: '',
+        taskId: '',
+        role: Role.ROLE_USER,
+        parts: [{
+          content: { $case: 'text', value: 'Review the architecture.' },
+          metadata: undefined,
+          filename: '',
+          mediaType: 'text/plain',
+        }],
+        metadata: { yclaw: { agents: ['architect'], allowActions: false } },
+        extensions: [],
+        referenceTaskIds: [],
+      },
+      configuration: undefined,
+      metadata: undefined,
+    }, 'task-development', 'context-development', new ServerCallContext({
+      tenant: 'northbridge',
+      user: new A2AOperatorUser(operator),
+      requestedVersion: '1.0',
+    }));
+    const eventBus = new DefaultExecutionEventBus();
+    const events: Array<{ kind: string; data: any }> = [];
+    eventBus.on('event', (event) => events.push(event));
+
+    const rateLimiter = {
+      incrementConcurrent: vi.fn().mockResolvedValue(1),
+      incrementDaily: vi.fn().mockResolvedValue(1),
+      decrementConcurrent: vi.fn().mockResolvedValue(0),
+    };
+    await new YClawA2AExecutor(agents, undefined, rateLimiter as any)
+      .execute(requestContext, eventBus);
+
+    expect(execute.mock.calls.map((call) => call[0].name)).toEqual(['architect', 'architect']);
+    expect(rateLimiter.incrementConcurrent).toHaveBeenCalledWith('development-operator');
+    expect(rateLimiter.incrementDaily).toHaveBeenCalledWith('development-operator');
+    expect(rateLimiter.decrementConcurrent).toHaveBeenCalledWith('development-operator');
+    expect(events.filter((event) => event.kind === 'statusUpdate').at(-1)?.data.status.state)
+      .toBe(TaskState.TASK_STATE_COMPLETED);
+  });
+
+  it('bounds aggregate participant evidence before synthesis', async () => {
+    const configs = new Map([
+      ['strategist', config('strategist', 'executive')],
+      ['architect', config('architect', 'development')],
+      ['reviewer', config('reviewer', 'executive')],
+    ]);
+    const execute = vi.fn(async (agent: AgentConfig, task: string, trigger: string) => ({
+      executionId: `${agent.name}-${trigger}`,
+      agentName: agent.name,
+      trigger,
+      status: 'completed',
+      startedAt: new Date(),
+      completedAt: new Date(),
+      actionsTaken: [],
+      output: trigger === 'a2a_synthesis' ? 'bounded synthesis' : 'x'.repeat(150_000),
+      task,
+    }));
+    const agents = {
+      router: {
+        getAllConfigs: () => configs,
+        getConfig: (name: string) => configs.get(name),
+      },
+      executor: { execute },
+    } as unknown as AgentContext;
+    const operator = OperatorSchema.parse({
+      operatorId: 'root-operator', displayName: 'Root', role: 'owner',
+      email: 'root@northbridge.test', apiKeyHash: 'hash', apiKeyPrefix: 'prefix',
+      tier: 'root', departments: ['*'], status: 'active',
+      createdAt: new Date(), updatedAt: new Date(),
+    });
+    const requestContext = new RequestContext({
+      tenant: 'northbridge',
+      message: {
+        messageId: 'message-bounds', contextId: '', taskId: '', role: Role.ROLE_USER,
+        parts: [{
+          content: { $case: 'text', value: 'Bound the evidence.' },
+          metadata: undefined, filename: '', mediaType: 'text/plain',
+        }],
+        metadata: { yclaw: { agents: ['strategist', 'architect'], synthesizer: 'reviewer' } },
+        extensions: [], referenceTaskIds: [],
+      },
+      configuration: undefined, metadata: undefined,
+    }, 'task-bounds', 'context-bounds', new ServerCallContext({
+      tenant: 'northbridge', user: new A2AOperatorUser(operator), requestedVersion: '1.0',
+    }));
+
+    await new YClawA2AExecutor(agents).execute(
+      requestContext,
+      new DefaultExecutionEventBus(),
+    );
+
+    const synthesisTask = execute.mock.calls.find((call) => call[2] === 'a2a_synthesis')?.[1];
+    expect(synthesisTask).toBeDefined();
+    expect(synthesisTask!.length).toBeLessThan(110_000);
+  });
+
+  it('fans a non-local cancellation out through the healthy coordination bus', async () => {
+    const configs = new Map([
+      ['strategist', config('strategist', 'executive')],
+    ]);
+    const agents = {
+      router: {
+        getAllConfigs: () => configs,
+        getConfig: (name: string) => configs.get(name),
+      },
+      executor: { execute: vi.fn() },
+    } as unknown as AgentContext;
+    const coordinationBus = {
+      subscribe: vi.fn(),
+      isHealthy: vi.fn().mockReturnValue(true),
+      publish: vi.fn().mockResolvedValue(undefined),
+    };
+    const executor = new YClawA2AExecutor(
+      agents,
+      undefined,
+      null,
+      coordinationBus as any,
+    );
+
+    await executor.coordinateCancellation('task-on-another-replica', {
+      tenant: 'northbridge',
+      user: { userName: 'root-operator' },
+    } as any);
+
+    expect(coordinationBus.publish).toHaveBeenCalledWith(
+      'a2a',
+      'cancel_request',
+      {
+        taskId: 'task-on-another-replica',
+        tenant: 'northbridge',
+        owner: 'root-operator',
+      },
+    );
   });
 });

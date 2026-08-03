@@ -207,6 +207,40 @@ describe('createAuthMiddleware', () => {
     expect(mockStore.getByOperatorId).not.toHaveBeenCalled();
   });
 
+  it('rate-limits A2A sends but not cancel control operations', async () => {
+    const { generateApiKey } = await import('../src/operators/api-keys.js');
+    const { key, prefix, hash } = await generateApiKey();
+    const activeOp = { ...mockOperator, apiKeyHash: hash, apiKeyPrefix: prefix };
+    const mockStore = {
+      getByApiKeyPrefix: vi.fn().mockResolvedValue(activeOp),
+      updateLastActive: vi.fn(),
+      getByOperatorId: vi.fn(),
+    } as any;
+    const mockAudit = { log: vi.fn() } as any;
+    const rateLimiter = {
+      checkLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 1 }),
+    } as any;
+    const middleware = createAuthMiddleware(
+      mockStore, mockAudit, null, 'op_root', rateLimiter,
+    );
+    const headers = { authorization: `Bearer ${key}` };
+
+    await middleware(
+      mockReq({ path: '/a2a/v1', method: 'POST', headers, body: { method: 'CancelTask' } }),
+      mockRes(),
+      mockNext,
+    );
+    expect(rateLimiter.checkLimit).not.toHaveBeenCalled();
+
+    await middleware(
+      mockReq({ path: '/a2a/v1', method: 'POST', headers, body: { method: 'SendMessage' } }),
+      mockRes(),
+      mockNext,
+    );
+    expect(rateLimiter.checkLimit).toHaveBeenCalledTimes(1);
+    expect(rateLimiter.checkLimit).toHaveBeenCalledWith(activeOp.operatorId, activeOp.limits);
+  });
+
   it('injects root operator on /api/* with no auth header (backward compat)', async () => {
     const mockStore = {
       getByApiKeyPrefix: vi.fn(),

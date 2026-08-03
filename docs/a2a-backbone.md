@@ -92,9 +92,13 @@ participant, and non-HTTPS remote URLs fail startup in production.
 Production refuses to start A2A without a healthy `IStateStore`. Tasks are stored in
 MongoDB with tenant and operator ownership, indexed for task ID, context, status, and
 updated time. Multiple ECS instances can therefore retrieve and list the same durable
-tasks. Active execution cancellation remains instance-local in this first slice; use
-sticky routing or a distributed execution ownership layer before horizontally scaling
-long-lived streaming requests across instances.
+tasks. Before a canceled state is persisted, the request handler aborts a local owner or
+fans a signed-in operator's cancel request across every core replica through YClaw's
+Redis event bus. Cancellation fails closed when cross-replica coordination is unhealthy.
+
+Set Terraform `a2a_enabled = false` for an emergency rollback. The AWS module also
+forces `A2A_ENABLED=false` whenever no ACM-backed HTTPS listener is configured, because
+the production Agent Card contract does not permit HTTP discovery.
 
 ## Safety Checklist
 

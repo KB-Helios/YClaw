@@ -29,10 +29,16 @@ reachable from allowed ingress networks.
 
 - ALB forwards `/.well-known/agent-card.json` and `/a2a/*` to the core target group.
 - ECS derives `A2A_PUBLIC_URL` from the HTTPS deployment domain.
+- `a2a_enabled` is an explicit rollback control and is forced off without ACM-backed HTTPS.
 - Participant cap, deadline, provider URL, and remote allowlist are Terraform variables.
+- ALB idle timeout is derived from two participant deadlines plus a safety margin so
+  synchronous participant and synthesis phases do not lose their client connection.
 - Remote Bearer tokens are an arbitrary sensitive map merged into the existing Secrets
   Manager module and injected into ECS by ARN.
 - Core fails closed in production when MongoDB-backed task state is unhealthy.
+- Redis pub/sub fans cancellation to the replica that owns the active execution; an
+  unhealthy coordination plane leaves the durable task unchanged instead of reporting
+  a false cancellation.
 - Standard `/health` remains the ECS target health check; production acceptance should
   additionally probe the Agent Card and an authenticated no-action task.
 

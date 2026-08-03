@@ -174,10 +174,16 @@ export function createAuthMiddleware(
       redis.set(`${CACHE_PREFIX}${prefix}`, operator.operatorId, 'EX', CACHE_TTL_SECONDS).catch(() => {});
     }
 
-    // Rate limit check — only on task-submission endpoints (POST /v1/tasks)
+    // Rate limit check — only on task-submission endpoints.
     // Skip for root and for read-only/cancel/approval endpoints
+    const a2aMethod = typeof req.body?.method === 'string' ? req.body.method : '';
+    const isA2ASubmission = req.method === 'POST' && (
+      (req.path === '/a2a/v1' && ['SendMessage', 'SendStreamingMessage'].includes(a2aMethod))
+      || req.path.endsWith('/message:send')
+      || req.path.endsWith('/message:stream')
+    );
     const isTaskSubmission = req.method === 'POST'
-      && (req.path === '/v1/tasks' || req.path.startsWith('/a2a/'));
+      && (req.path === '/v1/tasks' || isA2ASubmission);
     if (rateLimiter && operator.tier !== 'root' && isTaskSubmission) {
       const limitResult = await rateLimiter.checkLimit(operator.operatorId, operator.limits);
       if (!limitResult.allowed) {

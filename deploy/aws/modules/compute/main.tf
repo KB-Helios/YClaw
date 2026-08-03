@@ -163,6 +163,9 @@ resource "aws_lb" "main" {
   load_balancer_type = "application"
   security_groups    = [var.alb_security_group_id]
   subnets            = var.public_subnet_ids
+  # A synchronous SendMessage may spend one full deadline on participants
+  # and another on synthesis. Keep the connection alive across both phases.
+  idle_timeout = min(ceil(var.a2a_participant_timeout_ms / 1000) * 2 + 60, 4000)
 
   tags = { Name = "${var.project_name}-alb" }
 }
@@ -251,7 +254,8 @@ resource "aws_lb_target_group" "mc" {
 
 # Path-based routing: API, health, A2A, and Agent Card → core API
 locals {
-  api_paths    = ["/api/*", "/health", "/health/*", "/v1/*", "/github/*", "/a2a/*", "/.well-known/agent-card.json"]
+  api_paths    = ["/api/*", "/health", "/health/*", "/v1/*", "/github/*"]
+  a2a_paths    = ["/a2a/*", "/.well-known/agent-card.json"]
   listener_arn = local.use_https ? aws_lb_listener.https[0].arn : aws_lb_listener.http.arn
 }
 
@@ -267,6 +271,22 @@ resource "aws_lb_listener_rule" "api" {
   condition {
     path_pattern {
       values = local.api_paths
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "a2a" {
+  listener_arn = local.listener_arn
+  priority     = 11
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.api.arn
+  }
+
+  condition {
+    path_pattern {
+      values = local.a2a_paths
     }
   }
 }
@@ -302,7 +322,7 @@ resource "aws_ecs_task_definition" "core" {
       { name = "AO_SERVICE_URL", value = local.ao_url },
       { name = "GITHUB_OWNER", value = var.github_owner },
       { name = "GITHUB_REPO", value = var.github_repo },
-      { name = "A2A_ENABLED", value = "true" },
+      { name = "A2A_ENABLED", value = tostring(var.a2a_enabled && local.use_https) },
       { name = "A2A_PUBLIC_URL", value = local.public_base_url },
       { name = "A2A_PROVIDER_URL", value = var.a2a_provider_url },
       { name = "A2A_MAX_PARTICIPANTS", value = tostring(var.a2a_max_participants) },

@@ -7,11 +7,15 @@ import type {
   AgentExecutor as A2AAgentExecutor,
   ExecutionEventBus,
   RequestContext,
+  ServerCallContext,
 } from '@a2a-js/sdk/server';
 import type { AgentToolPolicy } from '../agent/executor.js';
 import type { AgentContext } from '../bootstrap/agents.js';
+import type { EventBus } from '../triggers/event.js';
+import type { OperatorRateLimiter } from '../operators/rate-limiter.js';
 import type { Operator } from '../operators/types.js';
 import { TIER_HIERARCHY } from '../operators/types.js';
+import { createLogger } from '../logging/logger.js';
 import { A2AOperatorUser } from './auth.js';
 import { RemoteAgentRegistry } from './remote.js';
 
@@ -34,6 +38,11 @@ interface ParticipantResult {
 const DEFAULT_COLLABORATORS = ['strategist', 'architect', 'sentinel'];
 const DEFAULT_SYNTHESIZERS = ['reviewer', 'strategist'];
 const MAX_OUTPUT_CHARS = 100_000;
+const logger = createLogger('a2a-executor');
+
+function boundedOutput(value: string): string {
+  return value.slice(0, MAX_OUTPUT_CHARS);
+}
 
 function stringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -148,13 +157,18 @@ function resultArtifact(result: ParticipantResult): Artifact {
 }
 
 function synthesisPrompt(problem: string, results: ParticipantResult[]): string {
-  const evidence = results.map((result) => ({
-    participant: result.id,
-    framework: result.kind,
-    status: result.status,
-    output: result.output,
-    ...(result.error ? { error: result.error } : {}),
-  }));
+  let remainingOutputChars = MAX_OUTPUT_CHARS;
+  const evidence = results.map((result) => {
+    const output = boundedOutput(result.output).slice(0, remainingOutputChars);
+    remainingOutputChars -= output.length;
+    return {
+      participant: result.id,
+      framework: result.kind,
+      status: result.status,
+      output,
+      ...(result.error ? { error: boundedOutput(result.error) } : {}),
+    };
+  });
 
   return [
     'Synthesize one decision-ready answer for the original problem.',
@@ -170,6 +184,8 @@ export class YClawA2AExecutor implements A2AAgentExecutor {
   private readonly controllers = new Map<string, {
     controller: AbortController;
     contextId: string;
+    tenant: string;
+    owner: string;
   }>();
   private readonly maxParticipants: number;
   private readonly participantTimeoutMs: number;
@@ -177,6 +193,8 @@ export class YClawA2AExecutor implements A2AAgentExecutor {
   constructor(
     private readonly agents: AgentContext,
     private readonly remotes = new RemoteAgentRegistry(),
+    private readonly rateLimiter: OperatorRateLimiter | null = null,
+    private readonly coordinationBus: EventBus | null = null,
   ) {
     this.maxParticipants = Math.min(
       Math.max(Number.parseInt(process.env.A2A_MAX_PARTICIPANTS || '6', 10) || 6, 1),
@@ -186,6 +204,15 @@ export class YClawA2AExecutor implements A2AAgentExecutor {
       Math.max(Number.parseInt(process.env.A2A_PARTICIPANT_TIMEOUT_MS || '600000', 10) || 600_000, 1_000),
       30 * 60 * 1000,
     );
+    this.coordinationBus?.subscribe('a2a:cancel_request', async (event) => {
+      const { taskId, tenant, owner } = event.payload;
+      if (typeof taskId === 'string' && typeof tenant === 'string' && typeof owner === 'string') {
+        const running = this.controllers.get(taskId);
+        if (running?.tenant === tenant && running.owner === owner) {
+          running.controller.abort(new Error('A2A task canceled'));
+        }
+      }
+    });
   }
 
   execute = async (requestContext: RequestContext, eventBus: ExecutionEventBus): Promise<void> => {
@@ -196,13 +223,21 @@ export class YClawA2AExecutor implements A2AAgentExecutor {
     this.controllers.set(requestContext.taskId, {
       controller,
       contextId: requestContext.contextId,
+      tenant: requestContext.context.tenant || '',
+      owner: requestContext.context.user?.userName || 'anonymous',
     });
 
+    let quotaOperatorId: string | null = null;
     try {
       const operator = this.getOperator(requestContext);
       const problem = getProblem(requestContext);
       const metadata = getRequestMetadata(requestContext);
       const plan = this.resolvePlan(metadata, operator);
+      if (this.rateLimiter && operator.tier !== 'root') {
+        await this.rateLimiter.incrementConcurrent(operator.operatorId);
+        quotaOperatorId = operator.operatorId;
+        await this.rateLimiter.incrementDaily(operator.operatorId);
+      }
       eventBus.publish(statusEvent(
         requestContext.taskId,
         requestContext.contextId,
@@ -294,8 +329,37 @@ export class YClawA2AExecutor implements A2AAgentExecutor {
       ));
     } finally {
       this.controllers.delete(requestContext.taskId);
+      if (quotaOperatorId && this.rateLimiter) {
+        try {
+          await this.rateLimiter.decrementConcurrent(quotaOperatorId);
+        } catch (error) {
+          logger.warn('Failed to release A2A concurrent quota', {
+            operatorId: quotaOperatorId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
     }
   };
+
+  /**
+   * Abort locally when possible, otherwise fan the request out over Redis.
+   * This is invoked before DefaultRequestHandler persists a canceled state.
+   */
+  async coordinateCancellation(taskId: string, context: ServerCallContext): Promise<void> {
+    const runningTask = this.controllers.get(taskId);
+    const tenant = context.tenant || '';
+    const owner = context.user?.userName || 'anonymous';
+    if (runningTask && runningTask.tenant === tenant && runningTask.owner === owner) {
+      // DefaultRequestHandler owns the local ExecutionEventBus and will call
+      // cancelTask immediately after this preflight, preserving contextId.
+      return;
+    }
+    if (!this.coordinationBus?.isHealthy()) {
+      throw new Error('A2A cancellation coordination is unavailable; task state was not changed');
+    }
+    await this.coordinationBus.publish('a2a', 'cancel_request', { taskId, tenant, owner });
+  }
 
   cancelTask = async (taskId: string, eventBus: ExecutionEventBus): Promise<void> => {
     const runningTask = this.controllers.get(taskId);
@@ -373,8 +437,15 @@ export class YClawA2AExecutor implements A2AAgentExecutor {
       throw new Error('A2A collaboration requires at least one participant');
     }
 
+    const canAccessAgent = (name: string): boolean => {
+      const config = allConfigs.get(name);
+      return Boolean(config) && (
+        operator.departments.includes('*')
+        || operator.departments.includes(config!.department)
+      );
+    };
     const synthesizer = metadata.synthesizer
-      || DEFAULT_SYNTHESIZERS.find((name) => allConfigs.has(name))
+      || DEFAULT_SYNTHESIZERS.find(canAccessAgent)
       || localAgents[0];
     if (!synthesizer || !allConfigs.has(synthesizer)) {
       throw new Error(`Unknown synthesis agent: ${synthesizer || 'none'}`);
@@ -418,12 +489,13 @@ export class YClawA2AExecutor implements A2AAgentExecutor {
         toolPolicy,
       );
       if (result.status === 'failed') {
+        const output = boundedOutput(result.output || result.error || 'Agent execution failed.');
         return {
           id: agentName,
           kind: 'local' as const,
           status: 'failed' as const,
-          output: result.output || result.error || 'Agent execution failed.',
-          ...(result.error ? { error: result.error } : {}),
+          output,
+          ...(result.error ? { error: boundedOutput(result.error) } : {}),
         };
       }
       const actionSummary = result.actionsTaken.length > 0
@@ -433,14 +505,16 @@ export class YClawA2AExecutor implements A2AAgentExecutor {
         id: agentName,
         kind: 'local' as const,
         status: 'completed' as const,
-        output: `${result.output || 'Agent completed without a textual response.'}${actionSummary}`,
+        output: boundedOutput(
+          `${result.output || 'Agent completed without a textual response.'}${actionSummary}`,
+        ),
       };
     }).catch((error) => ({
       id: agentName,
       kind: 'local' as const,
       status: 'failed' as const,
-      output: error instanceof Error ? error.message : String(error),
-      error: error instanceof Error ? error.message : String(error),
+      output: boundedOutput(error instanceof Error ? error.message : String(error)),
+      error: boundedOutput(error instanceof Error ? error.message : String(error)),
     }));
   }
 
@@ -452,13 +526,18 @@ export class YClawA2AExecutor implements A2AAgentExecutor {
   ): Promise<ParticipantResult> {
     return this.withTimeout(signal, async (participantSignal) => {
       const result = await this.remotes.run(agentName, problem, contextId, participantSignal);
-      return { id: result.id, kind: 'remote' as const, status: 'completed' as const, output: result.output };
+      return {
+        id: result.id,
+        kind: 'remote' as const,
+        status: 'completed' as const,
+        output: boundedOutput(result.output),
+      };
     }).catch((error) => ({
       id: agentName,
       kind: 'remote' as const,
       status: 'failed' as const,
-      output: error instanceof Error ? error.message : String(error),
-      error: error instanceof Error ? error.message : String(error),
+      output: boundedOutput(error instanceof Error ? error.message : String(error)),
+      error: boundedOutput(error instanceof Error ? error.message : String(error)),
     }));
   }
 
@@ -486,11 +565,11 @@ export class YClawA2AExecutor implements A2AAgentExecutor {
       'Produce the final response only. Do not execute actions or publish events.',
       'read_only',
     ));
-    if (result.status === 'completed' && result.output) return result.output;
+    if (result.status === 'completed' && result.output) return boundedOutput(result.output);
 
-    return results
+    return boundedOutput(results
       .map((participant) => `## ${participant.id} (${participant.status})\n${participant.output}`)
-      .join('\n\n');
+      .join('\n\n'));
   }
 
   private async withTimeout<T>(
@@ -499,17 +578,30 @@ export class YClawA2AExecutor implements A2AAgentExecutor {
   ): Promise<T> {
     const controller = new AbortController();
     const abort = () => controller.abort(signal.reason);
-    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) abort();
+    else signal.addEventListener('abort', abort, { once: true });
     const timer = setTimeout(() => {
       controller.abort(new Error(`A2A participant timed out after ${this.participantTimeoutMs}ms`));
     }, this.participantTimeoutMs);
     timer.unref();
 
+    let rejectAbort = (): void => {};
+    const rejectOnAbort = new Promise<never>((_resolve, reject) => {
+      rejectAbort = () => reject(
+        controller.signal.reason instanceof Error
+          ? controller.signal.reason
+          : new Error('A2A participant aborted'),
+      );
+      if (controller.signal.aborted) rejectAbort();
+      else controller.signal.addEventListener('abort', rejectAbort, { once: true });
+    });
+
     try {
-      return await operation(controller.signal);
+      return await Promise.race([operation(controller.signal), rejectOnAbort]);
     } finally {
       clearTimeout(timer);
       signal.removeEventListener('abort', abort);
+      controller.signal.removeEventListener('abort', rejectAbort);
     }
   }
 }

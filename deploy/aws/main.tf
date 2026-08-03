@@ -161,6 +161,7 @@ module "compute" {
   yclaw_repos                = var.yclaw_repos
   github_owner               = var.github_owner
   github_repo                = var.github_repo
+  a2a_enabled                = var.a2a_enabled
   a2a_provider_url           = var.a2a_provider_url
   a2a_max_participants       = var.a2a_max_participants
   a2a_participant_timeout_ms = var.a2a_participant_timeout_ms

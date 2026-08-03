@@ -16,6 +16,9 @@ export type AclMap = Record<string, string[]>;
 // ─── Default ACL ─────────────────────────────────────────────────────────────
 
 export const DEFAULT_ACL: AclMap = {
+  // A2A control plane
+  'a2a:cancel_request': ['a2a'],
+
   // Architect
   'architect:build_directive': ['architect'],
   'architect:mechanic_task': ['architect'],

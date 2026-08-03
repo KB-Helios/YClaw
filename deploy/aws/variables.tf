@@ -134,6 +134,12 @@ variable "github_repo" {
 
 # ─── A2A backbone ────────────────────────────────────────────────────────────
 
+variable "a2a_enabled" {
+  type        = bool
+  default     = true
+  description = "Enable the public A2A backbone when HTTPS is configured; set false for emergency rollback"
+}
+
 variable "a2a_provider_url" {
   type        = string
   default     = "https://github.com/KB-Helios/YClaw"

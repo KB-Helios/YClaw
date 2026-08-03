@@ -491,6 +491,16 @@ export class AgentExecutor {
           cacheStrategy: cachingEnabled ? 'system_and_3' : undefined,
         });
 
+        // Providers do not all support AbortSignal. A canceled A2A execution may
+        // therefore finish an in-flight model request; stop before recording its
+        // output or executing any tool calls.
+        if (abortSignal?.aborted) {
+          agentLogger.info('Execution aborted after LLM response');
+          throw abortSignal.reason instanceof Error
+            ? abortSignal.reason
+            : new Error('Execution aborted');
+        }
+
         // Log estimation accuracy for tuning (FF_PROMPT_CACHING)
         if (cachingEnabled && preflightEstimate !== undefined) {
           const actual = response.usage.inputTokens;
@@ -540,6 +550,12 @@ export class AgentExecutor {
 
         // Process each tool call
         for (const toolCall of response.toolCalls) {
+          if (abortSignal?.aborted) {
+            agentLogger.info('Execution aborted before tool call');
+            throw abortSignal.reason instanceof Error
+              ? abortSignal.reason
+              : new Error('Execution aborted');
+          }
           const result = await this.handleToolCall(
             config,
             toolCall,
