@@ -104,6 +104,24 @@ variable "github_repo" {
   type = string
 }
 
+# ─── A2A backbone ────────────────────────────────────────────────────────────
+
+variable "a2a_provider_url" {
+  type = string
+}
+
+variable "a2a_max_participants" {
+  type = number
+}
+
+variable "a2a_participant_timeout_ms" {
+  type = number
+}
+
+variable "a2a_remote_agents" {
+  type = string
+}
+
 # ─── Connection strings (from other modules) ─────────────────────────────────
 
 variable "mongodb_uri" {

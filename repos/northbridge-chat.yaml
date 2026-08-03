@@ -1,0 +1,44 @@
+name: northbridge-chat
+github:
+  owner: KB-Helios
+  repo: NorthBridge-Chat
+  default_branch: main
+  branch_prefix: "codex/"
+
+tech_stack:
+  language: typescript
+  framework: express-react
+  package_manager: npm
+  build_command: "npm run build"
+  test_command: "npm test"
+  lint_command: "npm run lint"
+
+risk_tier: critical
+trust_level: sandboxed
+
+deployment:
+  type: none
+  environments:
+    dev: manual
+    staging: manual
+    production: manual
+
+codegen:
+  preferred_backend: codex
+  timeout_minutes: 45
+  max_workspace_mb: 1000
+  claude_md_path: CLAUDE.md
+  frontend:
+    browser_evidence: true
+    base_url: http://localhost:3080
+    start_command: "npm run frontend-dev"
+    smoke_paths: ["/", "/chat/new"]
+
+secrets:
+  codegen_secrets: []
+  deploy_secrets: []
+  github_token_scope: contents_rw
+
+metadata:
+  description: "NorthBridge multi-provider chat and operator surface"
+  primary_reviewers: [architect, reviewer, sentinel]

@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "tsc && cp -r src/integrations/recipes dist/integrations/recipes",
+    "build": "tsc && node scripts/copy-recipes.mjs",
     "dev": "tsx watch src/main.ts",
     "lint": "tsc --noEmit",
     "test": "vitest run",
@@ -30,6 +30,7 @@
     "recipe:test": "tsx src/integrations/recipe-cli.ts test"
   },
   "dependencies": {
+    "@a2a-js/sdk": "1.0.0",
     "@anthropic-ai/sdk": "^0.39.0",
     "@aws-sdk/client-cost-explorer": "^3.997.0",
     "@aws-sdk/client-ecs": "^3.997.0",

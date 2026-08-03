@@ -249,9 +249,9 @@ resource "aws_lb_target_group" "mc" {
   tags = { Name = "${var.project_name}-mc-tg" }
 }
 
-# Path-based routing: /api/*, /health, /v1/* → core API
+# Path-based routing: API, health, A2A, and Agent Card → core API
 locals {
-  api_paths    = ["/api/*", "/health", "/health/*", "/v1/*", "/github/*"]
+  api_paths    = ["/api/*", "/health", "/health/*", "/v1/*", "/github/*", "/a2a/*", "/.well-known/agent-card.json"]
   listener_arn = local.use_https ? aws_lb_listener.https[0].arn : aws_lb_listener.http.arn
 }
 
@@ -302,6 +302,12 @@ resource "aws_ecs_task_definition" "core" {
       { name = "AO_SERVICE_URL", value = local.ao_url },
       { name = "GITHUB_OWNER", value = var.github_owner },
       { name = "GITHUB_REPO", value = var.github_repo },
+      { name = "A2A_ENABLED", value = "true" },
+      { name = "A2A_PUBLIC_URL", value = local.public_base_url },
+      { name = "A2A_PROVIDER_URL", value = var.a2a_provider_url },
+      { name = "A2A_MAX_PARTICIPANTS", value = tostring(var.a2a_max_participants) },
+      { name = "A2A_PARTICIPANT_TIMEOUT_MS", value = tostring(var.a2a_participant_timeout_ms) },
+      { name = "A2A_REMOTE_AGENTS", value = var.a2a_remote_agents },
       # Discord channel routing — agents are Discord-only
       { name = "DISCORD_CHANNEL_GENERAL", value = var.discord_channel_general },
       { name = "DISCORD_CHANNEL_EXECUTIVE", value = var.discord_channel_executive },

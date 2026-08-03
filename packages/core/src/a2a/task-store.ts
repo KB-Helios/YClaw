@@ -1,0 +1,122 @@
+import { TaskState } from '@a2a-js/sdk';
+
+import type { ListTasksRequest, ListTasksResponse, Task } from '@a2a-js/sdk';
+import type { ServerCallContext, TaskStore } from '@a2a-js/sdk/server';
+import type { ICollection, IStateStore } from '../interfaces/IStateStore.js';
+
+interface A2ATaskDocument extends Record<string, unknown> {
+  id: string;
+  tenant: string;
+  owner: string;
+  contextId: string;
+  status: TaskState;
+  statusTimestamp: string;
+  task: Task;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const DEFAULT_SCOPE = 'default';
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 100;
+
+function getScope(context: ServerCallContext): { tenant: string; owner: string } {
+  return {
+    tenant: context.tenant || DEFAULT_SCOPE,
+    owner: context.user?.userName || 'anonymous',
+  };
+}
+
+function getPageOffset(pageToken: string): number {
+  if (!pageToken) return 0;
+
+  try {
+    const offset = Number.parseInt(Buffer.from(pageToken, 'base64url').toString('utf8'), 10);
+    return Number.isSafeInteger(offset) && offset >= 0 ? offset : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function limitHistory(task: Task, historyLength?: number): Task {
+  if (historyLength === undefined) return task;
+
+  return {
+    ...task,
+    history: historyLength === 0 ? [] : task.history.slice(-historyLength),
+  };
+}
+
+function formatTask(task: Task, params: ListTasksRequest): Task {
+  const withHistory = limitHistory(task, params.historyLength);
+  if (params.includeArtifacts) return withHistory;
+  return { ...withHistory, artifacts: [] };
+}
+
+export class PersistentA2ATaskStore implements TaskStore {
+  private readonly tasks: ICollection<A2ATaskDocument>;
+
+  constructor(stateStore: IStateStore) {
+    this.tasks = stateStore.collection<A2ATaskDocument>('a2a_tasks');
+  }
+
+  async initialize(): Promise<void> {
+    await Promise.all([
+      this.tasks.createIndex({ fields: { tenant: 1, owner: 1, id: 1 }, unique: true }),
+      this.tasks.createIndex({ fields: { tenant: 1, owner: 1, updatedAt: -1 } }),
+      this.tasks.createIndex({ fields: { tenant: 1, owner: 1, contextId: 1 } }),
+      this.tasks.createIndex({ fields: { tenant: 1, owner: 1, status: 1 } }),
+    ]);
+  }
+
+  async save(task: Task, context: ServerCallContext): Promise<void> {
+    const scope = getScope(context);
+    const existing = await this.tasks.findOne({ ...scope, id: task.id });
+    const now = new Date().toISOString();
+    const document: A2ATaskDocument = {
+      ...scope,
+      id: task.id,
+      contextId: task.contextId,
+      status: task.status?.state ?? TaskState.TASK_STATE_UNSPECIFIED,
+      statusTimestamp: task.status?.timestamp ?? now,
+      task: structuredClone(task),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    await this.tasks.replaceOne({ ...scope, id: task.id }, document, { upsert: true });
+  }
+
+  async load(taskId: string, context: ServerCallContext): Promise<Task | undefined> {
+    const document = await this.tasks.findOne({ ...getScope(context), id: taskId });
+    return document ? structuredClone(document.task) : undefined;
+  }
+
+  async list(params: ListTasksRequest, context: ServerCallContext): Promise<ListTasksResponse> {
+    const scope = getScope(context);
+    const pageSize = Math.min(Math.max(params.pageSize ?? DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
+    const offset = getPageOffset(params.pageToken);
+    const filter = {
+      ...scope,
+      ...(params.contextId ? { contextId: params.contextId } : {}),
+      ...(params.status !== TaskState.TASK_STATE_UNSPECIFIED ? { status: params.status } : {}),
+      ...(params.statusTimestampAfter
+        ? { statusTimestamp: { $gte: params.statusTimestampAfter } }
+        : {}),
+    };
+    const [documents, totalSize] = await Promise.all([
+      this.tasks.find(filter, { sort: { updatedAt: -1 }, limit: pageSize, skip: offset }),
+      this.tasks.countDocuments(filter),
+    ]);
+    const nextOffset = offset + documents.length;
+
+    return {
+      tasks: documents.map((document) => formatTask(structuredClone(document.task), params)),
+      nextPageToken: nextOffset < totalSize
+        ? Buffer.from(String(nextOffset), 'utf8').toString('base64url')
+        : '',
+      pageSize,
+      totalSize,
+    };
+  }
+}

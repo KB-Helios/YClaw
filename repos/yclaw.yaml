@@ -1,6 +1,6 @@
 name: yclaw
 github:
-  owner: YClawAI
+  owner: KB-Helios
   repo: YClaw
   default_branch: main
   branch_prefix: "agent/"
@@ -34,5 +34,5 @@ secrets:
   github_token_scope: contents_rw
 
 metadata:
-  description: "YClaw Agents core monorepo — 14 AI agents, ECS Fargate production"
+  description: "NorthBridge's YClaw fork — company automation and A2A backbone"
   primary_reviewers: [architect, reviewer]

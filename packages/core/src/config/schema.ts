@@ -258,6 +258,7 @@ export const ExecutionRecordSchema = z.object({
     approved: z.boolean(),
   })).default([]),
   error: z.string().optional(),
+  output: z.string().optional(),
   tokenUsage: TokenUsageSchema.optional(),
 });
 

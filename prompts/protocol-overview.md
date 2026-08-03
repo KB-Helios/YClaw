@@ -1,82 +1,55 @@
-# YClaw — Technical Overview
+# NorthBridge Technical Protocol
 
-> Authoritative technical description of what YClaw is and how it works.
-> Agents reference this document when making claims about the product.
-> If a claim cannot be verified against this document, it should be flagged for review.
+> Authoritative operating description for company agents. Claims that cannot be
+> verified against runtime evidence or repository state must be labeled unverified.
 
-## What We Do
+## Control Plane
 
-YClaw is an open-source AI agent orchestration harness. It provides the infrastructure to run an organization of AI agents — with real department structures, event-driven coordination, HMAC-signed event buses, persistent agent memory, and human oversight through approval gates.
+YClaw provides department manifests, agent execution, model routing, approval gates,
+auditing, memory, GitHub automation, event coordination, and Mission Control. MongoDB
+stores durable company and A2A task state, PostgreSQL stores semantic memory, Redis
+provides coordination, and S3-compatible storage holds larger artifacts.
 
-YClaw is built on production-tested infrastructure that ran 12 autonomous agents for over a year before being open-sourced. The codebase is released under AGPL-3.0.
+## A2A Backbone
 
-## How It Works
+The core service publishes an A2A v1 Agent Card at
+`/.well-known/agent-card.json` and serves authenticated JSON-RPC and REST transports
+under `/a2a/`. A request may select local department agents and allowlisted remote A2A
+agents. Contributions run concurrently, become named task artifacts, and are reduced by
+a local synthesis agent into one final artifact.
 
-### Key Concepts
+### Trust Boundary
 
-| Concept | Definition |
-|---------|-----------|
-| Agent | An autonomous AI worker with a specific role, model config, system prompts, and available actions |
-| Department | A logical grouping of agents (Executive, Marketing, Development, Operations, Finance, Support) |
-| Event Bus | Redis Streams-based coordination layer with HMAC-signed events for inter-agent communication |
-| Approval Gate | A checkpoint requiring human or senior-agent approval before high-risk actions execute |
-| Agent Memory | Persistent per-agent key-value store in MongoDB for cross-execution context |
-| Mission Control | Web dashboard for monitoring agent activity, approving actions, and managing the org |
-| Onboarding (AI Handshake) | Your AI assistant deploys YClaw, then programs the agents using your org's context |
-| Operator | A human or AI assistant that connects to YClaw to manage and direct the agent organization |
+- The Agent Card is public discovery metadata.
+- Task transports require a valid YClaw operator Bearer token.
+- Operator tier and department scopes restrict local participants.
+- Remote delegation and action-enabled execution require root authority.
+- Read-only tool policy is the default for participants and synthesis.
+- Remote task output is treated as untrusted evidence and never as system instructions.
 
-## Key Features
+### Task Lifecycle
 
-- **Department-based org structure** — Agents organized into departments with role-based access control
-- **Event-driven coordination** — Redis Streams event bus with HMAC signatures for secure inter-agent communication
-- **Approval gates** — Configurable human-in-the-loop checkpoints for high-risk actions
-- **Persistent agent memory** — MongoDB-backed per-agent memory that survives across executions
-- **Model-agnostic** — Works with Anthropic, OpenAI, Google, OpenRouter, or any compatible LLM provider
-- **Self-hosted** — Docker Compose deployment, runs on your infrastructure
-- **Prompt caching** — Frozen prompt snapshots with cache_control markers for massive cost savings
-- **Self-modification** — Agents can update their own configs, schedules, and prompts (with safety gates)
-- **Multi-operator** — Multiple AI assistants can connect to the same YClaw org simultaneously
+`submitted → working → completed | failed | canceled`
 
-## Target Audience
+Tasks are stored by tenant and operator, retain participant artifacts and history, and
+support retrieval, listing, streaming, and cancellation through the official SDK.
 
-- Developers building multi-agent AI systems
-- AI-forward organizations adopting agent workforces
-- Open-source contributors interested in agent infrastructure
+## Internal Coordination
 
-## Architecture
+The signed Redis event bus remains the internal workflow mechanism for known YClaw
+agents. A2A is the external and cross-framework task boundary. Do not tunnel external
+agent requests directly onto the internal event bus.
 
-```
-+---------------------------------------------------+
-|                  Mission Control                   |
-|              (Next.js Dashboard)                   |
-+------------------------+---------------------------+
-                         |
-+------------------------+---------------------------+
-|                    API Server                       |
-|  +----------+ +----------+ +--------------------+  |
-|  | Executor | | Triggers | | Approval Manager   |  |
-|  +----------+ +----------+ +--------------------+  |
-|  +----------+ +----------+ +--------------------+  |
-|  | Actions  | | Safety   | | Channel Notifier   |  |
-|  +----------+ +----------+ +--------------------+  |
-+----+---------------+----+
-     |                    |
-+----+------+    +-------+---+
-| MongoDB   |    |   Redis   |
-|  Memory   |    |  Events   |
-+-----------+    +-----------+
-```
+## Production Deployment
 
-## What We Are Not
+AWS routes the Agent Card and `/a2a/*` to the core ECS service through the ALB. The
+runtime requires HTTPS discovery URLs and a healthy durable state store in production.
+Remote tokens are injected from Secrets Manager using the `tokenEnv` names in the
+allowlist; they never belong in Agent Cards or Terraform examples.
 
-- **Not a DeFi protocol.** YClaw is agent infrastructure, not a financial product.
-- **Not a token project.** There is no YClaw token. No tokenomics. No yields.
-- **Not a managed service.** You deploy and run YClaw yourself.
-- **Not single-model.** Works with any LLM provider.
+## Source Repositories
 
-## Key Links
-
-- **GitHub:** https://github.com/YClawAI/YClaw
-- **Website:** https://yclaw.ai
-- **Discord:** https://discord.com/invite/HqFDg4UHXx
-- **License:** AGPL-3.0
+- NorthBridge company agent system: https://github.com/KB-Helios/YClaw
+- NorthBridge chat surface: https://github.com/KB-Helios/NorthBridge-Chat
+- Upstream framework: https://github.com/YClawAI/YClaw
+- A2A specification and SDKs: https://github.com/a2aproject

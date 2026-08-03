@@ -2,6 +2,10 @@
 
 // Auth Facade (server-only — the ONLY auth export MC should use)
 export { getAuthFacade } from './auth/server.js';
+export { createA2ABridge } from './a2a/routes.js';
+export { buildAgentCard } from './a2a/card.js';
+export { YClawA2AExecutor } from './a2a/executor.js';
+export { PersistentA2ATaskStore } from './a2a/task-store.js';
 export type {
   AuthFacade,
   AuthFacadeConfig,

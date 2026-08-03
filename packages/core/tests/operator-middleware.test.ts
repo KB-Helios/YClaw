@@ -193,6 +193,20 @@ describe('createAuthMiddleware', () => {
     expect(res.status).toHaveBeenCalledWith(401);
   });
 
+  it('requires operator Bearer authentication on A2A transports', async () => {
+    const mockStore = { getByApiKeyPrefix: vi.fn(), updateLastActive: vi.fn(), getByOperatorId: vi.fn() } as any;
+    const mockAudit = { log: vi.fn() } as any;
+    const middleware = createAuthMiddleware(mockStore, mockAudit, null, 'op_root');
+    const req = mockReq({ path: '/a2a/v1', method: 'POST', headers: {} });
+    const res = mockRes();
+
+    await middleware(req, res, mockNext);
+
+    expect(mockNext).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(mockStore.getByOperatorId).not.toHaveBeenCalled();
+  });
+
   it('injects root operator on /api/* with no auth header (backward compat)', async () => {
     const mockStore = {
       getByApiKeyPrefix: vi.fn(),

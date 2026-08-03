@@ -132,6 +132,49 @@ variable "github_repo" {
   description = "Case-sensitive GitHub repo name for the default managed repo"
 }
 
+# ─── A2A backbone ────────────────────────────────────────────────────────────
+
+variable "a2a_provider_url" {
+  type        = string
+  default     = "https://github.com/KB-Helios/YClaw"
+  description = "Provider URL published in the public A2A Agent Card"
+}
+
+variable "a2a_max_participants" {
+  type        = number
+  default     = 6
+  description = "Maximum local plus remote agents allowed in one collaboration"
+
+  validation {
+    condition     = var.a2a_max_participants >= 1 && var.a2a_max_participants <= 12
+    error_message = "a2a_max_participants must be between 1 and 12."
+  }
+}
+
+variable "a2a_participant_timeout_ms" {
+  type        = number
+  default     = 600000
+  description = "Per-participant A2A deadline in milliseconds"
+
+  validation {
+    condition     = var.a2a_participant_timeout_ms >= 1000 && var.a2a_participant_timeout_ms <= 1800000
+    error_message = "a2a_participant_timeout_ms must be between 1000 and 1800000."
+  }
+}
+
+variable "a2a_remote_agents" {
+  type        = string
+  default     = "[]"
+  description = "JSON array of remote A2A Agent Card definitions and tokenEnv references"
+}
+
+variable "a2a_remote_agent_secrets" {
+  type        = map(string)
+  sensitive   = true
+  default     = {}
+  description = "Secret environment variables referenced by A2A_REMOTE_AGENTS tokenEnv fields"
+}
+
 variable "github_app_id" {
   type      = string
   sensitive = true

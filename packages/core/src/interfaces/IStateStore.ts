@@ -66,6 +66,12 @@ export interface UpdateResult {
   modifiedCount: number;
 }
 
+export interface ReplaceResult {
+  matchedCount: number;
+  modifiedCount: number;
+  upsertedCount: number;
+}
+
 export interface DeleteResult {
   deletedCount: number;
 }
@@ -95,6 +101,13 @@ export interface ICollection<T> {
 
   /** Update a single document matching the filter. */
   updateOne(filter: FilterQuery<T>, update: UpdateQuery<T>): Promise<UpdateResult>;
+
+  /** Atomically replace a document, optionally inserting when no match exists. */
+  replaceOne(
+    filter: FilterQuery<T>,
+    doc: T,
+    options?: { upsert?: boolean },
+  ): Promise<ReplaceResult>;
 
   /** Update all documents matching the filter. */
   updateMany(filter: FilterQuery<T>, update: UpdateQuery<T>): Promise<UpdateResult>;

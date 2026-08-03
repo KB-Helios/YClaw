@@ -31,6 +31,7 @@ import { registerHealthRoutes } from '../observability/health-routes.js';
 import { registerObservabilityRoutes } from '../observability/observability-routes.js';
 import { registerPublicRoutes } from '../public/routes.js';
 import { createAoCallbackMiddleware } from '../ao/callback.js';
+import { createA2ABridge } from '../a2a/routes.js';
 
 const logger = createLogger('bootstrap:routes');
 
@@ -91,6 +92,9 @@ export async function initRoutes(
     registerHealthRoutes(expressApp, healthAggregator);
   }
 
+  const a2aBridge = await createA2ABridge(services, agents);
+  a2aBridge?.mountAgentCard(webhookServer.getExpressApp());
+
   // ─── AO Callback (uses its own X-AO-TOKEN auth, before operator middleware) ─
   {
     const expressApp = webhookServer.getExpressApp();
@@ -118,6 +122,8 @@ export async function initRoutes(
 
     // Audit middleware — logs every request after response completes
     expressApp.use(createAuditMiddleware(operatorAuditLogger));
+
+    a2aBridge?.mountTransports(expressApp);
 
     // Register operator CRUD routes
     registerOperatorRoutes(expressApp, operatorStore, operatorAuditLogger, deployRedis, services.roleStore);
@@ -217,7 +223,7 @@ export async function initRoutes(
     // because the WebhookServer's requireApiKey middleware skips /v1/* paths.
     const expressApp = webhookServer.getExpressApp();
     expressApp.use((req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
-      if (req.path.startsWith('/v1/') && req.path !== '/v1/health') {
+      if ((req.path.startsWith('/v1/') && req.path !== '/v1/health') || req.path.startsWith('/a2a/')) {
         res.status(503).json({ error: 'Operator authentication subsystem not available' });
         return;
       }

@@ -1,4 +1,4 @@
-# 🦞 YCLAW
+# 🦞 YCLAW — NorthBridge Company Network
 
 <p align="center">
   <strong>Your AI assistant just got a company to run.</strong>
@@ -20,6 +20,11 @@
 
 > **Open-source AI agent orchestration framework.**
 > Your AI assistant deploys it. Your AI assistant programs it. Your org gets a workforce.
+
+> **NorthBridge fork:** this branch adds an authenticated, durable A2A v1 gateway for
+> cross-framework collaboration and configures the organization for
+> `KB-Helios/NorthBridge-Chat`. See the [A2A contract](docs/a2a-backbone.md) and
+> [cloud architecture](docs/northbridge-cloud-architecture.md).
 
 ---
 
@@ -105,6 +110,7 @@ YCLAW is not an agent framework. It's closer to an operating system for an auton
 - **Self-aware agents** — Every agent knows its own config, source code, execution history, and the full org chart. They reason about their own software.
 - **Autonomous pipeline** — Issues get assigned → code gets written → PRs get reviewed → CI passes → code ships. No human in the loop (unless you want one).
 - **Event-driven coordination** — HMAC-signed Redis event bus. Strategist sends directives, Architect coordinates code changes, Reviewer gates content, Sentinel monitors deploys.
+- **Cross-framework A2A** — Public Agent Card, authenticated JSON-RPC/REST transports, concurrent local and remote participants, durable task artifacts, cancellation, and governed synthesis.
 - **Continuous learning** — Agents extract reusable skills from every non-trivial task. The org gets smarter over time (Claudeception system).
 - **Safety floors** — Immutable safety gates, protected config keys, brand review, outbound security scanning, full audit trails. Agents can evolve, but they can't override their guardrails.
 - **Conversational onboarding** — Guided setup generates org profile, department configs, and brand voice from your answers. Drop files, link repos, paste URLs.
@@ -133,7 +139,7 @@ See [`AI-HANDSHAKE.md`](./AI-HANDSHAKE.md) for the full flow your assistant shou
 ## Quick Start
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YClawAI/YClaw/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/KB-Helios/YClaw/main/install.sh | bash
 ```
 
 The installer clones YCLAW into `~/yclaw`, installs dependencies, builds the

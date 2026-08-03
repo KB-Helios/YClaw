@@ -91,6 +91,8 @@ export function createAuthMiddleware(
     }
 
     const isV1Route = req.path.startsWith('/v1/');
+    const isA2ARoute = req.path.startsWith('/a2a/');
+    const requiresAuthentication = isV1Route || isA2ARoute;
     const isAcceptInvite = req.path === '/v1/operators/accept-invite' && req.method === 'POST';
 
     // Accept-invite doesn't require auth (the invite token IS the auth)
@@ -104,7 +106,7 @@ export function createAuthMiddleware(
 
     // No auth header
     if (!bearerToken) {
-      if (isV1Route) {
+      if (requiresAuthentication) {
         logDenied(auditLogger, 'anonymous', req, 'Missing Authorization header');
         res.status(401).json({ error: 'Missing Authorization: Bearer <api_key> header' });
         return;
@@ -174,7 +176,8 @@ export function createAuthMiddleware(
 
     // Rate limit check — only on task-submission endpoints (POST /v1/tasks)
     // Skip for root and for read-only/cancel/approval endpoints
-    const isTaskSubmission = req.path === '/v1/tasks' && req.method === 'POST';
+    const isTaskSubmission = req.method === 'POST'
+      && (req.path === '/v1/tasks' || req.path.startsWith('/a2a/'));
     if (rateLimiter && operator.tier !== 'root' && isTaskSubmission) {
       const limitResult = await rateLimiter.checkLimit(operator.operatorId, operator.limits);
       if (!limitResult.allowed) {
@@ -344,6 +347,7 @@ function deriveResourceType(path: string): string {
   if (path.startsWith('/v1/operators')) return 'operator';
   if (path.startsWith('/v1/tasks')) return 'task';
   if (path.startsWith('/api/agents')) return 'agent';
+  if (path.startsWith('/a2a/')) return 'a2a_task';
   if (path.startsWith('/api/trigger')) return 'execution';
   return 'api';
 }

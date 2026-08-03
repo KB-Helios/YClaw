@@ -1,34 +1,19 @@
-# YClaw Priorities
+# NorthBridge Priorities
 
-> Updated: 2026-04-10
+> Runtime status must come from current issues, executions, health checks, and deployment
+> evidence. This file defines standing priorities, not fabricated live metrics.
 
-## Current Goals
+1. Keep NorthBridge-Chat reliable, private, accessible, and provider-independent.
+2. Operate the A2A gateway with authenticated, durable, cancellable multi-agent tasks.
+3. Preserve least-privilege tools, human gates, and complete audit evidence.
+4. Automate company departments through connected workflows with named owners.
+5. Expand remote agent federation only after security and failure-mode review.
+6. Make cost, latency, quality, and terminal task state visible in Mission Control.
 
-1. **Developer Adoption** — Get builders using YClaw. GitHub stars, forks, Discord members, real deployments. This is the primary metric.
+## Measures
 
-2. **Content & Visibility** — Consistent X/Twitter presence from Ember using Scout's research. Technical threads, launch updates, community highlights. Daily posting.
-
-3. **Framework Stability** — Fix bugs fast, keep CI green, review PRs within 24 hours. First impressions of code quality matter for open source adoption.
-
-4. **Community Building** — Discord is home base. Be responsive, helpful, welcoming to new members. Builders helping builders.
-
-5. **Documentation Quality** — README, getting started guide, API docs, and deployment guides must be excellent. Developers judge projects by their docs.
-
-## Measurable Outcomes
-- GitHub stars: track weekly growth
-- Discord members: track weekly joins
-- Forks and active deployments: track monthly
-- X/Twitter engagement: impressions, replies, followers from @TroyMurs YCLAW content
-- PR review turnaround: < 24 hours
-- CI pass rate on main: > 95%
-
-## What's NOT a Priority Right Now
-- Monetization or paid features
-- Enterprise sales or marketing
-- Mobile apps or non-web interfaces
-- Token or financial mechanics of any kind
-
-## Timeline
-- **Week 1-2 (current):** Fix agent communication, get all 12 agents posting to Discord and X autonomously
-- **Month 1:** Establish consistent content cadence, first external contributors, stable deploy experience
-- **Month 2-3:** First non-Graviton production deployments, community-contributed agents/departments
+- A2A task success, failure, cancellation, and timeout rates.
+- Participant and synthesis latency by framework.
+- Approval queue age and high-risk action rejection rate.
+- CI health, deployment health, incident count, and recovery time.
+- Operator-confirmed usefulness; never substitute generated sentiment for user evidence.

@@ -47,6 +47,43 @@ import { SLACK_CHANNELS, getChannelForAgent as getRoutingChannelForAgent } from 
 
 const MAX_TOOL_ROUNDS = 25;
 
+export type AgentToolPolicy = 'configured' | 'read_only';
+
+const READ_ONLY_ACTIONS = new Set([
+  'ao:status',
+  'codegen:status',
+  'deploy:status',
+  'discord:get_channel_history',
+  'discord:get_thread',
+  'figma:get_comments',
+  'figma:get_components',
+  'figma:get_file',
+  'figma:get_images',
+  'figma:get_node',
+  'figma:get_styles',
+  'figma:get_variables',
+  'github:get_contents',
+  'github:get_diff',
+  'github:get_issue',
+  'github:get_multiple_files',
+  'github:get_pr',
+  'github:get_workflow_runs',
+  'github:list_issues',
+  'github:list_prs',
+  'repo:list',
+  'slack:get_channel_history',
+  'slack:get_thread',
+  'task:query',
+  'task:summary',
+  'vault:graph_query',
+  'vault:read',
+  'vault:search',
+  'x:lookup',
+  'x:search',
+  'x:user',
+  'x:user_tweets',
+]);
+
 export class AgentExecutor {
   private contextBuilder: ContextBuilder;
   private manifestBuilder: ManifestBuilder;
@@ -152,6 +189,7 @@ export class AgentExecutor {
     abortSignal?: AbortSignal,
     promptsOverride?: string[],
     operatorDirective?: string,
+    toolPolicy: AgentToolPolicy = 'configured',
   ): Promise<ExecutionRecord> {
     const executionId = randomUUID();
     const sessionId = executionId; // 1:1 mapping for Phase 1
@@ -350,7 +388,7 @@ export class AgentExecutor {
       }
 
       // 6. Build tool definitions (actions + self-modification)
-      const tools = this.buildToolDefinitions(config);
+      const tools = this.buildToolDefinitions(config, toolPolicy);
 
       // 6b. Store trigger payload as a Resource (Phase 2 audit trail)
       if (this.memoryManager && triggerPayload) {
@@ -488,6 +526,7 @@ export class AgentExecutor {
 
         // No tool calls — execution complete
         if (response.toolCalls.length === 0) {
+          record.output = response.content;
           agentLogger.info('Execution complete (no more tool calls)');
           break;
         }
@@ -1135,13 +1174,24 @@ export class AgentExecutor {
     return sanitized;
   }
 
-  private buildToolDefinitions(config: AgentConfig): ToolDefinition[] {
+  private buildToolDefinitions(config: AgentConfig, toolPolicy: AgentToolPolicy): ToolDefinition[] {
     // Don't clear — concurrent executions share this map. Entries are deterministic
     // (same action name always produces same sanitized name) so accumulation is safe.
     const tools: ToolDefinition[] = [];
 
     // Self-modification tools (available to all agents)
-    for (const tool of SELF_MOD_TOOLS) {
+    const selfTools = toolPolicy === 'read_only'
+      ? SELF_MOD_TOOLS.filter((tool) => [
+          'self.read_config',
+          'self.read_prompt',
+          'self.read_source',
+          'self.read_history',
+          'self.read_org_chart',
+          'self.memory_read',
+          'self.search_memory',
+        ].includes(tool.name))
+      : SELF_MOD_TOOLS;
+    for (const tool of selfTools) {
       tools.push({ ...tool, name: this.sanitizeToolName(tool.name) });
     }
 
@@ -1149,7 +1199,10 @@ export class AgentExecutor {
     tools.push({ ...REVIEW_TOOL, name: this.sanitizeToolName(REVIEW_TOOL.name) });
 
     // Action tools (based on agent's config)
-    for (const action of config.actions) {
+    const actions = toolPolicy === 'read_only'
+      ? config.actions.filter((action) => READ_ONLY_ACTIONS.has(action))
+      : config.actions;
+    for (const action of actions) {
       const schema = ACTION_SCHEMAS[action];
       if (schema) {
         // Typed schema available — LLM sees individual parameters
@@ -1176,7 +1229,7 @@ export class AgentExecutor {
     }
 
     // Event publish tool
-    if (!config.actions.includes('event:publish')) {
+    if (toolPolicy === 'configured' && !config.actions.includes('event:publish')) {
       tools.push({
         name: this.sanitizeToolName('event:publish'),
         description: 'Publish an event to the event bus for other agents to consume',

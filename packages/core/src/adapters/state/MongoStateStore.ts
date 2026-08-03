@@ -14,6 +14,7 @@ import type {
   UpdateQuery,
   FindOptions,
   UpdateResult,
+  ReplaceResult,
   DeleteResult,
   IndexSpec,
 } from '../../interfaces/IStateStore.js';
@@ -61,6 +62,21 @@ class MongoCollection<T extends Record<string, unknown>> implements ICollection<
 
     const result = await this.col.updateOne(filter as any, mongoUpdate);
     return { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount };
+  }
+
+  async replaceOne(
+    filter: FilterQuery<T>,
+    doc: T,
+    options?: { upsert?: boolean },
+  ): Promise<ReplaceResult> {
+    const result = await this.col.replaceOne(filter as any, { ...doc } as any, {
+      upsert: options?.upsert ?? false,
+    });
+    return {
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount,
+      upsertedCount: result.upsertedCount,
+    };
   }
 
   async updateMany(filter: FilterQuery<T>, update: UpdateQuery<T>): Promise<UpdateResult> {
@@ -176,6 +192,7 @@ class NullCollection<T extends Record<string, unknown>> implements ICollection<T
   async findOne(): Promise<T | null> { return null; }
   async find(): Promise<T[]> { return []; }
   async updateOne(): Promise<UpdateResult> { return { matchedCount: 0, modifiedCount: 0 }; }
+  async replaceOne(): Promise<ReplaceResult> { return { matchedCount: 0, modifiedCount: 0, upsertedCount: 0 }; }
   async updateMany(): Promise<UpdateResult> { return { matchedCount: 0, modifiedCount: 0 }; }
   async deleteOne(): Promise<DeleteResult> { return { deletedCount: 0 }; }
   async deleteMany(): Promise<DeleteResult> { return { deletedCount: 0 }; }
