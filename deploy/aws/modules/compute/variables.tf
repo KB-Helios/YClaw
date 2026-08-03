@@ -114,6 +114,10 @@ variable "a2a_provider_url" {
   type = string
 }
 
+variable "a2a_documentation_url" {
+  type = string
+}
+
 variable "a2a_max_participants" {
   type = number
 }

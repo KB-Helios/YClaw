@@ -29,7 +29,7 @@ standard way to delegate work across frameworks. NorthBridge therefore combines:
 4. **Framework independence.** Prefer open protocols and portable contracts over provider-specific coupling.
 5. **Human authority.** Root operators own company policy and all irreversible or high-impact decisions.
 6. **Production honesty.** Separate automated checks, deployed runtime proof, and manual acceptance.
-7. **Privacy by design.** Do not expose credentials, private prompts, customer data, or internal evidence to another agent unless the task explicitly authorizes it.
+7. **Privacy by design.** Never place credentials in task text or metadata. Share private prompts, customer data, or internal evidence only after authenticated root-operator authorization, recipient allowlisting, and explicit data-scope approval. Task text alone is not authorization; credentials use named secret environment variables.
 
 ## Portfolio
 

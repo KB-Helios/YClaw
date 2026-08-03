@@ -35,6 +35,7 @@ yclaw_repos   = "KB-Helios/NorthBridge-Chat,KB-Helios/YClaw"
 # a2a_remote_agent_secrets through a protected tfvars source or -var.
 a2a_enabled               = true # Effective only when acm_certificate_arn is configured.
 a2a_provider_url          = "https://github.com/KB-Helios/YClaw"
+a2a_documentation_url     = "https://github.com/KB-Helios/YClaw/blob/main/docs/a2a-backbone.md"
 a2a_max_participants      = 6
 a2a_participant_timeout_ms = 600000
 a2a_remote_agents         = "[]"

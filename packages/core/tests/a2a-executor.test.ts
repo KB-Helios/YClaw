@@ -340,6 +340,10 @@ describe('YClaw A2A executor', () => {
     const synthesisTask = execute.mock.calls.find((call) => call[2] === 'a2a_synthesis')?.[1];
     expect(synthesisTask).toBeDefined();
     expect(synthesisTask!.length).toBeLessThan(110_000);
+    const evidenceMarkers = synthesisTask!.match(/a2a-evidence-[0-9a-f-]{36}/g) ?? [];
+    expect(evidenceMarkers).toHaveLength(3);
+    expect(new Set(evidenceMarkers).size).toBe(1);
+    expect(synthesisTask).not.toContain('<participant_evidence>');
   });
 
   it('fans a non-local cancellation out through the healthy coordination bus', async () => {

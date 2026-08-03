@@ -92,9 +92,6 @@ export async function initRoutes(
     registerHealthRoutes(expressApp, healthAggregator);
   }
 
-  const a2aBridge = await createA2ABridge(services, agents);
-  a2aBridge?.mountAgentCard(webhookServer.getExpressApp());
-
   // ─── AO Callback (uses its own X-AO-TOKEN auth, before operator middleware) ─
   {
     const expressApp = webhookServer.getExpressApp();
@@ -109,6 +106,11 @@ export async function initRoutes(
 
     // Tailscale network boundary (production only)
     expressApp.use(createTailscaleMiddleware());
+
+    // Public discovery has no Bearer requirement, but it remains behind the
+    // production ingress boundary and is advertised only with operator auth.
+    const a2aBridge = await createA2ABridge(services, agents);
+    a2aBridge?.mountAgentCard(expressApp);
 
     // Bootstrap route — after Tailscale (network boundary) but before auth
     // middleware (uses its own Bearer token, not operator API key auth)

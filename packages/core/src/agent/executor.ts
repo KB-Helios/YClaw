@@ -11,6 +11,7 @@ import type {
   ReviewResult,
   ToolDefinition,
 } from '../config/schema.js';
+import { MAX_EXECUTION_OUTPUT_CHARS } from '../config/schema.js';
 import { createProvider, type LLMMessage, type LLMResponse, type ToolCall } from '../llm/provider.js';
 import { calculateCacheMetrics, type CacheMetrics } from '../llm/types.js';
 import { ContextBuilder } from './context.js';
@@ -49,7 +50,7 @@ const MAX_TOOL_ROUNDS = 25;
 
 export type AgentToolPolicy = 'configured' | 'read_only';
 
-const READ_ONLY_ACTIONS = new Set([
+export const READ_ONLY_ACTIONS = new Set([
   'ao:status',
   'codegen:status',
   'deploy:status',
@@ -83,6 +84,53 @@ const READ_ONLY_ACTIONS = new Set([
   'x:user',
   'x:user_tweets',
 ]);
+
+export const READ_ONLY_SELF_METHODS = new Set([
+  'read_config',
+  'read_prompt',
+  'read_source',
+  'read_history',
+  'read_org_chart',
+  'memory_read',
+  'search_memory',
+]);
+
+export function actionsForToolPolicy(
+  configuredActions: string[],
+  toolPolicy: AgentToolPolicy,
+): string[] {
+  if (toolPolicy === 'configured') return [...configuredActions];
+
+  const allowed = new Set<string>();
+  for (const grant of configuredActions) {
+    if (READ_ONLY_ACTIONS.has(grant)) {
+      allowed.add(grant);
+      continue;
+    }
+    if (grant.endsWith(':*')) {
+      const prefix = grant.slice(0, -1);
+      for (const action of READ_ONLY_ACTIONS) {
+        if (action.startsWith(prefix)) allowed.add(action);
+      }
+    }
+  }
+  return [...allowed];
+}
+
+export function isToolAllowedByPolicy(
+  name: string,
+  configuredActions: string[],
+  toolPolicy: AgentToolPolicy,
+): boolean {
+  if (toolPolicy === 'configured') return true;
+  if (name.startsWith('self.')) {
+    return READ_ONLY_SELF_METHODS.has(name.slice('self.'.length));
+  }
+  if (name.includes(':')) {
+    return actionsForToolPolicy(configuredActions, toolPolicy).includes(name);
+  }
+  return false;
+}
 
 export class AgentExecutor {
   private contextBuilder: ContextBuilder;
@@ -536,9 +584,14 @@ export class AgentExecutor {
 
         // No tool calls — execution complete
         if (response.toolCalls.length === 0) {
-          record.output = response.content;
+          record.output = response.content.slice(0, MAX_EXECUTION_OUTPUT_CHARS);
           agentLogger.info('Execution complete (no more tool calls)');
           break;
+        }
+
+        // Preserve the latest narration when MAX_TOOL_ROUNDS is reached.
+        if (response.content) {
+          record.output = response.content.slice(0, MAX_EXECUTION_OUTPUT_CHARS);
         }
 
         // Add assistant message with tool calls
@@ -562,6 +615,7 @@ export class AgentExecutor {
             record,
             agentLogger,
             actionResultCache,
+            toolPolicy,
           );
 
           // Truncate large binary data (e.g., base64 images) to prevent context overflow
@@ -793,12 +847,18 @@ export class AgentExecutor {
     record: ExecutionRecord,
     agentLogger: ReturnType<typeof createLogger>,
     actionResultCache?: Map<string, unknown>,
+    toolPolicy: AgentToolPolicy = 'configured',
   ): Promise<unknown> {
     // Desanitize the API-safe name back to the original (e.g., "self_read_config" → "self.read_config")
     const name = this.toolNameMap.get(toolCall.name) || toolCall.name;
     const args = toolCall.arguments;
 
     agentLogger.debug(`Tool call: ${name}`, { args });
+
+    if (!isToolAllowedByPolicy(name, config.actions, toolPolicy)) {
+      agentLogger.warn(`Tool blocked by ${toolPolicy} policy: ${name}`);
+      return { error: `Tool ${name} is not permitted by the ${toolPolicy} policy` };
+    }
 
     // Self-modification tools
     if (name.startsWith('self.')) {
@@ -829,12 +889,7 @@ export class AgentExecutor {
     const method = toolName.replace('self.', '');
 
     // Read-only tools — always allowed
-    const readOnlyMethods = [
-      'read_config', 'read_prompt', 'read_source', 'read_history',
-      'read_org_chart', 'memory_read', 'search_memory',
-    ];
-
-    if (readOnlyMethods.includes(method)) {
+    if (READ_ONLY_SELF_METHODS.has(method)) {
       return this.selfModTools.execute(config.name, method, args);
     }
 
@@ -1197,27 +1252,21 @@ export class AgentExecutor {
 
     // Self-modification tools (available to all agents)
     const selfTools = toolPolicy === 'read_only'
-      ? SELF_MOD_TOOLS.filter((tool) => [
-          'self.read_config',
-          'self.read_prompt',
-          'self.read_source',
-          'self.read_history',
-          'self.read_org_chart',
-          'self.memory_read',
-          'self.search_memory',
-        ].includes(tool.name))
+      ? SELF_MOD_TOOLS.filter((tool) => (
+          READ_ONLY_SELF_METHODS.has(tool.name.replace('self.', ''))
+        ))
       : SELF_MOD_TOOLS;
     for (const tool of selfTools) {
       tools.push({ ...tool, name: this.sanitizeToolName(tool.name) });
     }
 
-    // Review submission tool (already API-safe, but register in map)
-    tools.push({ ...REVIEW_TOOL, name: this.sanitizeToolName(REVIEW_TOOL.name) });
+    // Review submission writes audit state, so it is not exposed in read-only mode.
+    if (toolPolicy === 'configured') {
+      tools.push({ ...REVIEW_TOOL, name: this.sanitizeToolName(REVIEW_TOOL.name) });
+    }
 
     // Action tools (based on agent's config)
-    const actions = toolPolicy === 'read_only'
-      ? config.actions.filter((action) => READ_ONLY_ACTIONS.has(action))
-      : config.actions;
+    const actions = actionsForToolPolicy(config.actions, toolPolicy);
     for (const action of actions) {
       const schema = ACTION_SCHEMAS[action];
       if (schema) {

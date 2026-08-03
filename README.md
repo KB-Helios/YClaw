@@ -8,9 +8,11 @@
   <a href="https://openclaw.ai"><img src="https://img.shields.io/badge/Built%20on-OpenClaw-blue?style=for-the-badge" alt="Built on OpenClaw"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg?style=for-the-badge" alt="License"></a>
   <a href="https://clawhub.com"><img src="https://img.shields.io/badge/Skills-ClawHub-orange?style=for-the-badge" alt="ClawHub"></a>
-  <a href="https://yclaw.ai"><img src="https://img.shields.io/badge/Web-yclaw.ai-purple?style=for-the-badge" alt="Website"></a>
-  <a href="https://x.com/YClaw_ai"><img src="https://img.shields.io/badge/𝕏-@YClaw%5Fai-black?style=for-the-badge" alt="Twitter"></a>
-  <a href="https://discord.gg/97Fvue9327"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://github.com/KB-Helios/YClaw"><img src="https://img.shields.io/badge/NorthBridge-YClaw-5319E7?style=for-the-badge&logo=github" alt="NorthBridge YClaw fork"></a>
+  <a href="https://github.com/KB-Helios/NorthBridge-Chat"><img src="https://img.shields.io/badge/NorthBridge-Chat-0A84FF?style=for-the-badge&logo=github" alt="NorthBridge Chat"></a>
+  <a href="https://yclaw.ai"><img src="https://img.shields.io/badge/Upstream-yclaw.ai-purple?style=for-the-badge" alt="Upstream YClaw website"></a>
+  <a href="https://x.com/YClaw_ai"><img src="https://img.shields.io/badge/Upstream%20X-@YClaw%5Fai-black?style=for-the-badge" alt="Upstream YClaw Twitter"></a>
+  <a href="https://discord.gg/97Fvue9327"><img src="https://img.shields.io/badge/Upstream%20Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Upstream YClaw Discord"></a>
 </p>
 <p align="center">
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-20%2B-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js"></a>

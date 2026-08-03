@@ -146,6 +146,12 @@ variable "a2a_provider_url" {
   description = "Provider URL published in the public A2A Agent Card"
 }
 
+variable "a2a_documentation_url" {
+  type        = string
+  default     = "https://github.com/KB-Helios/YClaw/blob/main/docs/a2a-backbone.md"
+  description = "Documentation URL published in the public A2A Agent Card"
+}
+
 variable "a2a_max_participants" {
   type        = number
   default     = 6
@@ -172,6 +178,11 @@ variable "a2a_remote_agents" {
   type        = string
   default     = "[]"
   description = "JSON array of remote A2A Agent Card definitions and tokenEnv references"
+
+  validation {
+    condition     = can(tolist(jsondecode(var.a2a_remote_agents)))
+    error_message = "a2a_remote_agents must be a JSON array."
+  }
 }
 
 variable "a2a_remote_agent_secrets" {

@@ -67,4 +67,25 @@ describe('A2A Agent Card', () => {
 
     expect(() => buildAgentCard(router)).toThrow('must use HTTPS');
   });
+
+  it('fails closed when the production origin is unset', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.A2A_PUBLIC_URL;
+    const router = { getAllConfigs: () => new Map() } as unknown as AgentRouter;
+
+    expect(() => buildAgentCard(router)).toThrow('A2A_PUBLIC_URL is required');
+  });
+
+  it('keeps provider and documentation URLs independently configurable', () => {
+    process.env.NODE_ENV = 'test';
+    process.env.A2A_PUBLIC_URL = 'https://agents.northbridge.test';
+    process.env.A2A_PROVIDER_URL = 'https://provider.northbridge.test';
+    process.env.A2A_DOCUMENTATION_URL = 'https://docs.northbridge.test/a2a';
+    const router = { getAllConfigs: () => new Map() } as unknown as AgentRouter;
+
+    const card = buildAgentCard(router);
+
+    expect(card.provider?.url).toBe('https://provider.northbridge.test');
+    expect(card.documentationUrl).toBe('https://docs.northbridge.test/a2a');
+  });
 });

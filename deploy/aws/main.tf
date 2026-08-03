@@ -163,6 +163,7 @@ module "compute" {
   github_repo                = var.github_repo
   a2a_enabled                = var.a2a_enabled
   a2a_provider_url           = var.a2a_provider_url
+  a2a_documentation_url      = var.a2a_documentation_url
   a2a_max_participants       = var.a2a_max_participants
   a2a_participant_timeout_ms = var.a2a_participant_timeout_ms
   a2a_remote_agents          = var.a2a_remote_agents

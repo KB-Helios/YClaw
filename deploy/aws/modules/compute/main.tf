@@ -325,6 +325,7 @@ resource "aws_ecs_task_definition" "core" {
       { name = "A2A_ENABLED", value = tostring(var.a2a_enabled && local.use_https) },
       { name = "A2A_PUBLIC_URL", value = local.public_base_url },
       { name = "A2A_PROVIDER_URL", value = var.a2a_provider_url },
+      { name = "A2A_DOCUMENTATION_URL", value = var.a2a_documentation_url },
       { name = "A2A_MAX_PARTICIPANTS", value = tostring(var.a2a_max_participants) },
       { name = "A2A_PARTICIPANT_TIMEOUT_MS", value = tostring(var.a2a_participant_timeout_ms) },
       { name = "A2A_REMOTE_AGENTS", value = var.a2a_remote_agents },

@@ -5,9 +5,10 @@
 ```text
 NorthBridge-Chat / framework clients / operators
                     |
-              HTTPS + Bearer RBAC
+          HTTPS + restricted ingress
                     |
           AWS ALB (Agent Card + /a2a/*)
+          public discovery | Bearer RBAC
                     |
              YClaw Core on ECS
         +-----------+-----------+
@@ -24,13 +25,16 @@ Mission Control is the human approval and observability surface. Core owns autho
 task lifecycle, local agent execution, synthesis, and audit. AO owns isolated codegen
 workspaces. Databases, Redis, and AO remain private; only ALB-routed HTTP surfaces are
 reachable from allowed ingress networks.
+The Agent Card is public only at the HTTP-auth layer so A2A discovery works;
+ALB CIDRs/Tailscale still restrict network ingress, and every `/a2a/*` transport
+request requires an authenticated operator Bearer key.
 
 ## AWS Contract Implemented Here
 
 - ALB forwards `/.well-known/agent-card.json` and `/a2a/*` to the core target group.
 - ECS derives `A2A_PUBLIC_URL` from the HTTPS deployment domain.
 - `a2a_enabled` is an explicit rollback control and is forced off without ACM-backed HTTPS.
-- Participant cap, deadline, provider URL, and remote allowlist are Terraform variables.
+- Participant cap, deadline, provider/documentation URLs, and remote allowlist are Terraform variables.
 - ALB idle timeout is derived from two participant deadlines plus a safety margin so
   synchronous participant and synthesis phases do not lose their client connection.
 - Remote Bearer tokens are an arbitrary sensitive map merged into the existing Secrets
@@ -58,14 +62,19 @@ Use `deploy/aws/terraform.tfvars.example` as the non-secret template. Production
 1. An operator or NorthBridge-Chat submits a company problem through A2A.
 2. RBAC validates operator tier and department scope.
 3. Strategist or the request metadata chooses local and remote participants.
-4. Participants work concurrently under read-only policy and independent deadlines.
+4. Participants work concurrently under a read-only policy enforced at both tool
+   advertisement and execution dispatch, with independent deadlines.
 5. Contributions are persisted as artifacts and synthesized by Reviewer or Strategist.
 6. The terminal task, history, and final artifact remain queryable by the owning operator.
 7. Any requested mutations continue through YClaw's action safety and approval paths.
 
 ## Release Gate
 
-- `npm run build`, `npm run lint`, `npm test`, config validation, and Terraform validation are green.
+- `npm run build`, `npm run lint`, focused A2A/security tests, config validation,
+  and Terraform validation must be green.
+- Linux PR CI must pass the complete root test suite. On Windows, the current
+  acceptance evidence is 1,868/1,892 root tests; 24 upstream POSIX-only path,
+  executable-bit, bash/grep, and timeout expectations are explicitly excluded.
 - Agent Card advertises the intended HTTPS URLs and Bearer security scheme.
 - Unauthorized transports return 401/403; an authorized read-only collaboration completes.
 - Restarting core preserves task retrieval and operator isolation.

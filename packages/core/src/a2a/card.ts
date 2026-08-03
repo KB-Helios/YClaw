@@ -77,7 +77,8 @@ export function buildAgentCard(router: AgentRouter): AgentCard {
       url: process.env.A2A_PROVIDER_URL || DEFAULT_PROVIDER_URL,
     },
     version: process.env.YCLAW_VERSION || '0.1.0',
-    documentationUrl: `${process.env.A2A_PROVIDER_URL || DEFAULT_PROVIDER_URL}/blob/main/docs/a2a-backbone.md`,
+    documentationUrl: process.env.A2A_DOCUMENTATION_URL
+      || `${DEFAULT_PROVIDER_URL}/blob/main/docs/a2a-backbone.md`,
     capabilities: {
       streaming: true,
       pushNotifications: false,

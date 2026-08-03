@@ -78,13 +78,13 @@ function messageToText(message: Message): string {
 }
 
 function taskToText(task: Task): string {
-  const artifacts = task.artifacts
-    .flatMap((artifact) => artifact.parts)
+  const artifacts = (task.artifacts ?? [])
+    .flatMap((artifact) => artifact.parts ?? [])
     .map(partToText)
     .filter(Boolean);
   if (artifacts.length > 0) return artifacts.join('\n\n');
 
-  return task.history
+  return (task.history ?? [])
     .filter((message) => message.role === Role.ROLE_AGENT)
     .map(messageToText)
     .filter(Boolean)

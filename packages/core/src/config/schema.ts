@@ -231,6 +231,8 @@ export type TokenUsage = z.infer<typeof TokenUsageSchema>;
 
 // ─── Execution History ───────────────────────────────────────────────────────
 
+export const MAX_EXECUTION_OUTPUT_CHARS = 16_000;
+
 export const ExecutionRecordSchema = z.object({
   id: z.string(),
   agent: z.string(),
@@ -258,7 +260,7 @@ export const ExecutionRecordSchema = z.object({
     approved: z.boolean(),
   })).default([]),
   error: z.string().optional(),
-  output: z.string().optional(),
+  output: z.string().max(MAX_EXECUTION_OUTPUT_CHARS).optional(),
   tokenUsage: TokenUsageSchema.optional(),
 });
 
