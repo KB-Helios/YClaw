@@ -1,5 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createAuthMiddleware, createAuditMiddleware, requireTier, requireDepartment } from '../src/operators/middleware.js';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  createAuthMiddleware,
+  createAuditMiddleware,
+  createTailscaleMiddleware,
+  requireTier,
+  requireDepartment,
+} from '../src/operators/middleware.js';
 import type { Operator } from '../src/operators/types.js';
 
 // Mock request/response/next
@@ -50,6 +56,60 @@ const mockRootOperator: Operator = {
   departments: ['*'],
   priorityClass: 100,
 };
+
+describe('createTailscaleMiddleware', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.clearAllMocks();
+  });
+
+  it('keeps public A2A surfaces reachable outside the tailnet', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const middleware = createTailscaleMiddleware();
+
+    for (const path of ['/.well-known/agent-card.json', '/a2a/v1', '/a2a/rest']) {
+      vi.clearAllMocks();
+      middleware(mockReq({ path, ip: '203.0.113.10' }), mockRes(), mockNext);
+      expect(mockNext).toHaveBeenCalledOnce();
+    }
+  });
+
+  it('keeps non-A2A operator routes restricted to the tailnet', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const middleware = createTailscaleMiddleware();
+    const publicResponse = mockRes();
+
+    middleware(
+      mockReq({ path: '/v1/operators/me', ip: '203.0.113.10' }),
+      publicResponse,
+      mockNext,
+    );
+    expect(mockNext).not.toHaveBeenCalled();
+    expect(publicResponse.status).toHaveBeenCalledWith(403);
+
+    middleware(
+      mockReq({ path: '/v1/operators/me', ip: '100.64.0.10' }),
+      mockRes(),
+      mockNext,
+    );
+    expect(mockNext).toHaveBeenCalledOnce();
+  });
+
+  it('does not trust a client-supplied Tailscale X-Forwarded-For value', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const middleware = createTailscaleMiddleware();
+    const response = mockRes();
+
+    middleware(mockReq({
+      path: '/v1/operators/me',
+      ip: '203.0.113.10',
+      headers: { 'x-forwarded-for': '100.64.0.10, 203.0.113.10' },
+    }), response, mockNext);
+
+    expect(mockNext).not.toHaveBeenCalled();
+    expect(response.status).toHaveBeenCalledWith(403);
+  });
+});
 
 describe('requireTier', () => {
   beforeEach(() => {
@@ -191,6 +251,54 @@ describe('createAuthMiddleware', () => {
     await middleware(req, res, mockNext);
     expect(mockNext).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('requires operator Bearer authentication on A2A transports', async () => {
+    const mockStore = { getByApiKeyPrefix: vi.fn(), updateLastActive: vi.fn(), getByOperatorId: vi.fn() } as any;
+    const mockAudit = { log: vi.fn() } as any;
+    const middleware = createAuthMiddleware(mockStore, mockAudit, null, 'op_root');
+    const req = mockReq({ path: '/a2a/v1', method: 'POST', headers: {} });
+    const res = mockRes();
+
+    await middleware(req, res, mockNext);
+
+    expect(mockNext).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(mockStore.getByOperatorId).not.toHaveBeenCalled();
+  });
+
+  it('rate-limits A2A sends but not cancel control operations', async () => {
+    const { generateApiKey } = await import('../src/operators/api-keys.js');
+    const { key, prefix, hash } = await generateApiKey();
+    const activeOp = { ...mockOperator, apiKeyHash: hash, apiKeyPrefix: prefix };
+    const mockStore = {
+      getByApiKeyPrefix: vi.fn().mockResolvedValue(activeOp),
+      updateLastActive: vi.fn(),
+      getByOperatorId: vi.fn(),
+    } as any;
+    const mockAudit = { log: vi.fn() } as any;
+    const rateLimiter = {
+      checkLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 1 }),
+    } as any;
+    const middleware = createAuthMiddleware(
+      mockStore, mockAudit, null, 'op_root', rateLimiter,
+    );
+    const headers = { authorization: `Bearer ${key}` };
+
+    await middleware(
+      mockReq({ path: '/a2a/v1', method: 'POST', headers, body: { method: 'CancelTask' } }),
+      mockRes(),
+      mockNext,
+    );
+    expect(rateLimiter.checkLimit).not.toHaveBeenCalled();
+
+    await middleware(
+      mockReq({ path: '/a2a/v1', method: 'POST', headers, body: { method: 'SendMessage' } }),
+      mockRes(),
+      mockNext,
+    );
+    expect(rateLimiter.checkLimit).toHaveBeenCalledTimes(1);
+    expect(rateLimiter.checkLimit).toHaveBeenCalledWith(activeOp.operatorId, activeOp.limits);
   });
 
   it('injects root operator on /api/* with no auth header (backward compat)', async () => {

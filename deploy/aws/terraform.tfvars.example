@@ -3,7 +3,7 @@
 # This file is for reference only — yclaw deploy generates the actual tfvars.
 
 # General
-project_name = "yclaw"
+project_name = "northbridge-agents"
 aws_region   = "us-east-1"
 cost_tier    = "starter"  # starter (~$50-80/mo) or production (~$300+/mo)
 
@@ -22,14 +22,24 @@ ao_image   = "yclaw/ao:latest"
 ao_ephemeral_storage_gib = 50
 
 # GitHub + AO autonomy
-github_owner  = "YourOrg"
-github_repo   = "your-repo"
-yclaw_repos   = "YourOrg/your-repo"
+github_owner  = "KB-Helios"
+github_repo   = "NorthBridge-Chat"
+yclaw_repos   = "KB-Helios/NorthBridge-Chat,KB-Helios/YClaw"
 # ao_auth_token = "generate-with-openssl-rand-base64-32"
 
 # HTTPS (recommended for production)
 # acm_certificate_arn = "arn:aws:acm:us-east-1:123456789:certificate/abc-123"
-# domain_name         = "agents.example.com"
+# domain_name         = "agents.northbridge.example"
+
+# A2A federation. Keep tokens out of this file; provide
+# a2a_remote_agent_secrets through a protected tfvars source or -var.
+a2a_enabled               = true # Effective only when acm_certificate_arn is configured.
+a2a_provider_url          = "https://github.com/KB-Helios/YClaw"
+a2a_documentation_url     = "https://github.com/KB-Helios/YClaw/blob/main/docs/a2a-backbone.md"
+a2a_max_participants      = 6
+a2a_participant_timeout_ms = 600000
+a2a_remote_agents         = "[]"
+# a2a_remote_agent_secrets = { A2A_PARTNER_TOKEN = "..." }
 
 # Application secrets (sensitive — use env vars or -var flag, not this file)
 # setup_token      = "..."

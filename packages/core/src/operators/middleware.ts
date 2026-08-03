@@ -16,6 +16,8 @@ const CACHE_PREFIX = 'op:prefix:';
 // Paths that are never subject to operator auth (they have their own auth or are public)
 const AUTH_EXEMPT_PATHS = new Set(['/health', '/v1/health']);
 const AUTH_EXEMPT_PREFIXES = ['/github/', '/slack/', '/telegram'];
+const TAILSCALE_EXEMPT_PATHS = new Set(['/.well-known/agent-card.json']);
+const TAILSCALE_EXEMPT_PREFIXES = ['/a2a/'];
 
 // Tailscale CGNAT range: 100.64.0.0/10 (100.64.0.0 - 100.127.255.255)
 function isTailscaleIP(ip: string): boolean {
@@ -42,13 +44,16 @@ export function createTailscaleMiddleware() {
       return;
     }
 
-    // Skip for paths with their own auth (webhooks)
-    if (isExemptPath(req.path)) {
+    // Public A2A discovery and Bearer-authenticated transports must remain
+    // reachable through the public ALB. Other operator routes stay tailnet-only.
+    if (isExemptPath(req.path) || isTailscaleExemptPath(req.path)) {
       next();
       return;
     }
 
-    const ip = (req.headers['x-forwarded-for'] as string) || req.ip || '';
+    // Express resolves req.ip through the configured trusted-proxy chain.
+    // Reading X-Forwarded-For directly would let a client spoof the first hop.
+    const ip = req.ip || '';
     if (!isTailscaleIP(ip)) {
       res.status(403).json({ error: 'Access restricted to Tailscale network' });
       return;
@@ -61,6 +66,11 @@ export function createTailscaleMiddleware() {
 function isExemptPath(path: string): boolean {
   if (AUTH_EXEMPT_PATHS.has(path)) return true;
   return AUTH_EXEMPT_PREFIXES.some((p) => path.startsWith(p));
+}
+
+function isTailscaleExemptPath(path: string): boolean {
+  if (TAILSCALE_EXEMPT_PATHS.has(path)) return true;
+  return TAILSCALE_EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
 /**
@@ -91,6 +101,8 @@ export function createAuthMiddleware(
     }
 
     const isV1Route = req.path.startsWith('/v1/');
+    const isA2ARoute = req.path.startsWith('/a2a/');
+    const requiresAuthentication = isV1Route || isA2ARoute;
     const isAcceptInvite = req.path === '/v1/operators/accept-invite' && req.method === 'POST';
 
     // Accept-invite doesn't require auth (the invite token IS the auth)
@@ -104,7 +116,7 @@ export function createAuthMiddleware(
 
     // No auth header
     if (!bearerToken) {
-      if (isV1Route) {
+      if (requiresAuthentication) {
         logDenied(auditLogger, 'anonymous', req, 'Missing Authorization header');
         res.status(401).json({ error: 'Missing Authorization: Bearer <api_key> header' });
         return;
@@ -172,9 +184,16 @@ export function createAuthMiddleware(
       redis.set(`${CACHE_PREFIX}${prefix}`, operator.operatorId, 'EX', CACHE_TTL_SECONDS).catch(() => {});
     }
 
-    // Rate limit check — only on task-submission endpoints (POST /v1/tasks)
+    // Rate limit check — only on task-submission endpoints.
     // Skip for root and for read-only/cancel/approval endpoints
-    const isTaskSubmission = req.path === '/v1/tasks' && req.method === 'POST';
+    const a2aMethod = typeof req.body?.method === 'string' ? req.body.method : '';
+    const isA2ASubmission = req.method === 'POST' && (
+      (req.path === '/a2a/v1' && ['SendMessage', 'SendStreamingMessage'].includes(a2aMethod))
+      || req.path.endsWith('/message:send')
+      || req.path.endsWith('/message:stream')
+    );
+    const isTaskSubmission = req.method === 'POST'
+      && (req.path === '/v1/tasks' || isA2ASubmission);
     if (rateLimiter && operator.tier !== 'root' && isTaskSubmission) {
       const limitResult = await rateLimiter.checkLimit(operator.operatorId, operator.limits);
       if (!limitResult.allowed) {
@@ -344,6 +363,7 @@ function deriveResourceType(path: string): string {
   if (path.startsWith('/v1/operators')) return 'operator';
   if (path.startsWith('/v1/tasks')) return 'task';
   if (path.startsWith('/api/agents')) return 'agent';
+  if (path.startsWith('/a2a/')) return 'a2a_task';
   if (path.startsWith('/api/trigger')) return 'execution';
   return 'api';
 }

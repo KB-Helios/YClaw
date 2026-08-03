@@ -39,6 +39,8 @@ export type FilterQuery<T> = {
 export interface UpdateQuery<T> {
   /** Set specific fields to new values. */
   $set?: Partial<T> & Record<string, unknown>;
+  /** Set fields only when an upsert inserts a new document. */
+  $setOnInsert?: Partial<T> & Record<string, unknown>;
   /** Increment numeric fields. */
   $inc?: Partial<Record<keyof T & string, number>>;
   /** Remove fields from the document. */
@@ -64,6 +66,12 @@ export interface FindOptions {
 export interface UpdateResult {
   matchedCount: number;
   modifiedCount: number;
+}
+
+export interface ReplaceResult {
+  matchedCount: number;
+  modifiedCount: number;
+  upsertedCount: number;
 }
 
 export interface DeleteResult {
@@ -93,8 +101,19 @@ export interface ICollection<T> {
   /** Find all documents matching the filter with optional sort/limit/skip. */
   find(filter: FilterQuery<T>, options?: FindOptions): Promise<T[]>;
 
-  /** Update a single document matching the filter. */
-  updateOne(filter: FilterQuery<T>, update: UpdateQuery<T>): Promise<UpdateResult>;
+  /** Atomically update a document, optionally inserting when no match exists. */
+  updateOne(
+    filter: FilterQuery<T>,
+    update: UpdateQuery<T>,
+    options?: { upsert?: boolean },
+  ): Promise<UpdateResult>;
+
+  /** Atomically replace a document, optionally inserting when no match exists. */
+  replaceOne(
+    filter: FilterQuery<T>,
+    doc: T,
+    options?: { upsert?: boolean },
+  ): Promise<ReplaceResult>;
 
   /** Update all documents matching the filter. */
   updateMany(filter: FilterQuery<T>, update: UpdateQuery<T>): Promise<UpdateResult>;

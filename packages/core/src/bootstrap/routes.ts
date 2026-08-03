@@ -31,6 +31,7 @@ import { registerHealthRoutes } from '../observability/health-routes.js';
 import { registerObservabilityRoutes } from '../observability/observability-routes.js';
 import { registerPublicRoutes } from '../public/routes.js';
 import { createAoCallbackMiddleware } from '../ao/callback.js';
+import { createA2ABridge } from '../a2a/routes.js';
 
 const logger = createLogger('bootstrap:routes');
 
@@ -106,6 +107,20 @@ export async function initRoutes(
     // Tailscale network boundary (production only)
     expressApp.use(createTailscaleMiddleware());
 
+    // Public discovery bypasses the tailnet check. A2A transports also bypass
+    // that network check but are mounted after mandatory operator Bearer auth.
+    let a2aBridge: Awaited<ReturnType<typeof createA2ABridge>> = null;
+    try {
+      a2aBridge = await createA2ABridge(services, agents);
+      if (a2aBridge) {
+        a2aBridge.mountAgentCard(expressApp);
+      }
+    } catch (bridgeError) {
+      logger.error('A2A bridge initialization failed — A2A routes will not be registered', {
+        error: bridgeError instanceof Error ? bridgeError.message : String(bridgeError),
+      });
+    }
+
     // Bootstrap route — after Tailscale (network boundary) but before auth
     // middleware (uses its own Bearer token, not operator API key auth)
     registerBootstrapRoute(expressApp, operatorStore);
@@ -118,6 +133,8 @@ export async function initRoutes(
 
     // Audit middleware — logs every request after response completes
     expressApp.use(createAuditMiddleware(operatorAuditLogger));
+
+    a2aBridge?.mountTransports(expressApp);
 
     // Register operator CRUD routes
     registerOperatorRoutes(expressApp, operatorStore, operatorAuditLogger, deployRedis, services.roleStore);
@@ -217,7 +234,7 @@ export async function initRoutes(
     // because the WebhookServer's requireApiKey middleware skips /v1/* paths.
     const expressApp = webhookServer.getExpressApp();
     expressApp.use((req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
-      if (req.path.startsWith('/v1/') && req.path !== '/v1/health') {
+      if ((req.path.startsWith('/v1/') && req.path !== '/v1/health') || req.path.startsWith('/a2a/')) {
         res.status(503).json({ error: 'Operator authentication subsystem not available' });
         return;
       }

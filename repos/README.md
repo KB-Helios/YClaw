@@ -8,8 +8,9 @@ Static repository configuration files for the YClaw agent system's **Repo Regist
 
 | File | Repo | Risk Tier | Deployment | Description |
 |------|------|-----------|------------|-------------|
-| `yclaw.yaml` | `YClawAI/YClaw` | `critical` | ECS Fargate (`yclaw-cluster-production`) | The agents' own monorepo. 14 AI agents, TypeScript/Express, npm. Protected by CI/review gates. |
+| `yclaw.yaml` | `KB-Helios/YClaw` | `critical` | ECS Fargate (`yclaw-cluster-production`) | NorthBridge's company automation and A2A control plane. Protected by CI/review gates. |
 | `yclaw-site.yaml` | `YClawAI/yclaw-site` | `auto` | GitHub Pages | Static YCLAW landing page. |
+| `northbridge-chat.yaml` | `KB-Helios/NorthBridge-Chat` | `critical` | Manual | NorthBridge chat and operator surface. |
 
 
 ---

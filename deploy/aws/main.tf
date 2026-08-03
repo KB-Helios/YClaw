@@ -31,6 +31,15 @@ check "acm_requires_domain" {
   }
 }
 
+# Check blocks warn without blocking a development plan. A2A stays disabled
+# until an ACM-backed HTTPS listener exists.
+check "a2a_requires_https" {
+  assert {
+    condition     = !var.a2a_enabled || var.acm_certificate_arn != ""
+    error_message = "a2a_enabled=true was requested without an ACM certificate; ECS will receive A2A_ENABLED=false until HTTPS is configured."
+  }
+}
+
 check "github_repo_identity_required" {
   assert {
     condition     = length(var.github_owner) > 0 && length(var.github_repo) > 0
@@ -121,7 +130,7 @@ module "secrets" {
   source = "./modules/secrets"
 
   project_name = var.project_name
-  secret_values = {
+  secret_values = merge(var.a2a_remote_agent_secrets, {
     MONGODB_URI                = local.mongodb_uri
     MEMORY_DATABASE_URL        = module.database.rds_connection_string
     YCLAW_SETUP_TOKEN          = var.setup_token
@@ -132,7 +141,7 @@ module "secrets" {
     GITHUB_APP_INSTALLATION_ID = var.github_app_installation_id
     GITHUB_TOKEN               = var.github_token
     (local.llm_api_key_name)   = var.llm_api_key
-  }
+  })
 }
 
 # ─── Compute ──────────────────────────────────────────────────────────────────
@@ -140,36 +149,42 @@ module "secrets" {
 module "compute" {
   source = "./modules/compute"
 
-  project_name             = var.project_name
-  aws_region               = var.aws_region
-  cost_tier                = var.cost_tier
-  vpc_id                   = module.networking.vpc_id
-  public_subnet_ids        = module.networking.public_subnet_ids
-  ecs_subnet_ids           = module.networking.ecs_subnet_ids
-  assign_public_ip         = module.networking.assign_public_ip
-  alb_security_group_id    = module.networking.alb_security_group_id
-  ecs_security_group_id    = module.networking.ecs_security_group_id
-  ecs_cpu                  = var.ecs_cpu
-  ecs_memory               = var.ecs_memory
-  core_image               = var.core_image
-  mc_image                 = var.mc_image
-  ao_image                 = var.ao_image
-  ao_max_concurrent        = var.ao_max_concurrent
-  ao_default_agent         = var.ao_default_agent
-  ao_ephemeral_storage_gib = var.ao_ephemeral_storage_gib
-  yclaw_ao_project         = var.yclaw_ao_project
-  yclaw_repos              = var.yclaw_repos
-  github_owner             = var.github_owner
-  github_repo              = var.github_repo
-  mongodb_uri              = local.mongodb_uri
-  redis_url                = module.cache.redis_connection_string
-  memory_database_url      = module.database.rds_connection_string
-  s3_bucket                = module.storage.bucket_name
-  secret_arns              = module.secrets.secret_arns
-  all_secret_arns          = module.secrets.all_secret_arns
-  log_group_name           = module.monitoring.log_group_name
-  acm_certificate_arn      = var.acm_certificate_arn
-  domain_name              = var.domain_name
+  project_name               = var.project_name
+  aws_region                 = var.aws_region
+  cost_tier                  = var.cost_tier
+  vpc_id                     = module.networking.vpc_id
+  public_subnet_ids          = module.networking.public_subnet_ids
+  ecs_subnet_ids             = module.networking.ecs_subnet_ids
+  assign_public_ip           = module.networking.assign_public_ip
+  alb_security_group_id      = module.networking.alb_security_group_id
+  ecs_security_group_id      = module.networking.ecs_security_group_id
+  ecs_cpu                    = var.ecs_cpu
+  ecs_memory                 = var.ecs_memory
+  core_image                 = var.core_image
+  mc_image                   = var.mc_image
+  ao_image                   = var.ao_image
+  ao_max_concurrent          = var.ao_max_concurrent
+  ao_default_agent           = var.ao_default_agent
+  ao_ephemeral_storage_gib   = var.ao_ephemeral_storage_gib
+  yclaw_ao_project           = var.yclaw_ao_project
+  yclaw_repos                = var.yclaw_repos
+  github_owner               = var.github_owner
+  github_repo                = var.github_repo
+  a2a_enabled                = var.a2a_enabled
+  a2a_provider_url           = var.a2a_provider_url
+  a2a_documentation_url      = var.a2a_documentation_url
+  a2a_max_participants       = var.a2a_max_participants
+  a2a_participant_timeout_ms = var.a2a_participant_timeout_ms
+  a2a_remote_agents          = var.a2a_remote_agents
+  mongodb_uri                = local.mongodb_uri
+  redis_url                  = module.cache.redis_connection_string
+  memory_database_url        = module.database.rds_connection_string
+  s3_bucket                  = module.storage.bucket_name
+  secret_arns                = module.secrets.secret_arns
+  all_secret_arns            = module.secrets.all_secret_arns
+  log_group_name             = module.monitoring.log_group_name
+  acm_certificate_arn        = var.acm_certificate_arn
+  domain_name                = var.domain_name
   # Discord channel routing
   discord_channel_general     = var.discord_channel_general
   discord_channel_executive   = var.discord_channel_executive
