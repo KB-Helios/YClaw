@@ -16,6 +16,8 @@ const CACHE_PREFIX = 'op:prefix:';
 // Paths that are never subject to operator auth (they have their own auth or are public)
 const AUTH_EXEMPT_PATHS = new Set(['/health', '/v1/health']);
 const AUTH_EXEMPT_PREFIXES = ['/github/', '/slack/', '/telegram'];
+const TAILSCALE_EXEMPT_PATHS = new Set(['/.well-known/agent-card.json']);
+const TAILSCALE_EXEMPT_PREFIXES = ['/a2a/'];
 
 // Tailscale CGNAT range: 100.64.0.0/10 (100.64.0.0 - 100.127.255.255)
 function isTailscaleIP(ip: string): boolean {
@@ -42,13 +44,16 @@ export function createTailscaleMiddleware() {
       return;
     }
 
-    // Skip for paths with their own auth (webhooks)
-    if (isExemptPath(req.path)) {
+    // Public A2A discovery and Bearer-authenticated transports must remain
+    // reachable through the public ALB. Other operator routes stay tailnet-only.
+    if (isExemptPath(req.path) || isTailscaleExemptPath(req.path)) {
       next();
       return;
     }
 
-    const ip = (req.headers['x-forwarded-for'] as string) || req.ip || '';
+    // Express resolves req.ip through the configured trusted-proxy chain.
+    // Reading X-Forwarded-For directly would let a client spoof the first hop.
+    const ip = req.ip || '';
     if (!isTailscaleIP(ip)) {
       res.status(403).json({ error: 'Access restricted to Tailscale network' });
       return;
@@ -61,6 +66,11 @@ export function createTailscaleMiddleware() {
 function isExemptPath(path: string): boolean {
   if (AUTH_EXEMPT_PATHS.has(path)) return true;
   return AUTH_EXEMPT_PREFIXES.some((p) => path.startsWith(p));
+}
+
+function isTailscaleExemptPath(path: string): boolean {
+  if (TAILSCALE_EXEMPT_PATHS.has(path)) return true;
+  return TAILSCALE_EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
 /**

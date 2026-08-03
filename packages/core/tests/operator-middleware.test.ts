@@ -1,5 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createAuthMiddleware, createAuditMiddleware, requireTier, requireDepartment } from '../src/operators/middleware.js';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  createAuthMiddleware,
+  createAuditMiddleware,
+  createTailscaleMiddleware,
+  requireTier,
+  requireDepartment,
+} from '../src/operators/middleware.js';
 import type { Operator } from '../src/operators/types.js';
 
 // Mock request/response/next
@@ -50,6 +56,60 @@ const mockRootOperator: Operator = {
   departments: ['*'],
   priorityClass: 100,
 };
+
+describe('createTailscaleMiddleware', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.clearAllMocks();
+  });
+
+  it('keeps public A2A surfaces reachable outside the tailnet', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const middleware = createTailscaleMiddleware();
+
+    for (const path of ['/.well-known/agent-card.json', '/a2a/v1', '/a2a/rest']) {
+      vi.clearAllMocks();
+      middleware(mockReq({ path, ip: '203.0.113.10' }), mockRes(), mockNext);
+      expect(mockNext).toHaveBeenCalledOnce();
+    }
+  });
+
+  it('keeps non-A2A operator routes restricted to the tailnet', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const middleware = createTailscaleMiddleware();
+    const publicResponse = mockRes();
+
+    middleware(
+      mockReq({ path: '/v1/operators/me', ip: '203.0.113.10' }),
+      publicResponse,
+      mockNext,
+    );
+    expect(mockNext).not.toHaveBeenCalled();
+    expect(publicResponse.status).toHaveBeenCalledWith(403);
+
+    middleware(
+      mockReq({ path: '/v1/operators/me', ip: '100.64.0.10' }),
+      mockRes(),
+      mockNext,
+    );
+    expect(mockNext).toHaveBeenCalledOnce();
+  });
+
+  it('does not trust a client-supplied Tailscale X-Forwarded-For value', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const middleware = createTailscaleMiddleware();
+    const response = mockRes();
+
+    middleware(mockReq({
+      path: '/v1/operators/me',
+      ip: '203.0.113.10',
+      headers: { 'x-forwarded-for': '100.64.0.10, 203.0.113.10' },
+    }), response, mockNext);
+
+    expect(mockNext).not.toHaveBeenCalled();
+    expect(response.status).toHaveBeenCalledWith(403);
+  });
+});
 
 describe('requireTier', () => {
   beforeEach(() => {

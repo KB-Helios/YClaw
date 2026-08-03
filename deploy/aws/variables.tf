@@ -190,6 +190,14 @@ variable "a2a_remote_agent_secrets" {
   sensitive   = true
   default     = {}
   description = "Secret environment variables referenced by A2A_REMOTE_AGENTS tokenEnv fields"
+
+  validation {
+    condition = alltrue([
+      for name in keys(var.a2a_remote_agent_secrets) :
+      can(regex("^A2A_[A-Z0-9_]+_TOKEN$", name))
+    ])
+    error_message = "a2a_remote_agent_secrets keys must use the A2A_*_TOKEN namespace."
+  }
 }
 
 variable "github_app_id" {

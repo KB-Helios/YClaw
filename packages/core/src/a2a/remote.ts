@@ -5,6 +5,7 @@ import { Role, TaskState } from '@a2a-js/sdk';
 import type { Message, Part, SendMessageRequest, Task } from '@a2a-js/sdk';
 
 const MAX_REMOTE_OUTPUT_CHARS = 100_000;
+const REMOTE_TOKEN_ENV_PATTERN = /^A2A_[A-Z0-9_]+_TOKEN$/;
 
 export interface RemoteAgentDefinition {
   id: string;
@@ -35,9 +36,11 @@ function parseDefinition(value: unknown, index: number): RemoteAgentDefinition {
     throw new Error(`Remote A2A agent ${candidate.id} must use HTTPS in production`);
   }
   if (candidate.tokenEnv !== undefined && (
-    typeof candidate.tokenEnv !== 'string' || !/^[A-Z][A-Z0-9_]+$/.test(candidate.tokenEnv)
+    typeof candidate.tokenEnv !== 'string' || !REMOTE_TOKEN_ENV_PATTERN.test(candidate.tokenEnv)
   )) {
-    throw new Error(`A2A_REMOTE_AGENTS[${index}].tokenEnv must name an environment variable`);
+    throw new Error(
+      `A2A_REMOTE_AGENTS[${index}].tokenEnv must use the A2A_*_TOKEN secret namespace`,
+    );
   }
 
   return {

@@ -84,8 +84,9 @@ future protocol negotiation remain version-safe.
 ```
 
 The URL points to the remote agent origin; the official client discovers its Agent
-Card. `tokenEnv` names a secret injected at runtime. Missing tokens fail the delegated
-participant, and non-HTTPS remote URLs fail startup in production.
+Card. `tokenEnv` names a secret injected at runtime and must use the `A2A_*_TOKEN`
+namespace so a remote definition cannot reference a core credential. Missing tokens
+fail the delegated participant, and non-HTTPS remote URLs fail startup in production.
 
 ## Durability and Scale
 

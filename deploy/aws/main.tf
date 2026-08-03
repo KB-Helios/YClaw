@@ -121,7 +121,7 @@ module "secrets" {
   source = "./modules/secrets"
 
   project_name = var.project_name
-  secret_values = merge({
+  secret_values = merge(var.a2a_remote_agent_secrets, {
     MONGODB_URI                = local.mongodb_uri
     MEMORY_DATABASE_URL        = module.database.rds_connection_string
     YCLAW_SETUP_TOKEN          = var.setup_token
@@ -132,7 +132,7 @@ module "secrets" {
     GITHUB_APP_INSTALLATION_ID = var.github_app_installation_id
     GITHUB_TOKEN               = var.github_token
     (local.llm_api_key_name)   = var.llm_api_key
-  }, var.a2a_remote_agent_secrets)
+  })
 }
 
 # ─── Compute ──────────────────────────────────────────────────────────────────

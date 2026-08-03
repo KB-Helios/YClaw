@@ -107,8 +107,8 @@ export async function initRoutes(
     // Tailscale network boundary (production only)
     expressApp.use(createTailscaleMiddleware());
 
-    // Public discovery has no Bearer requirement, but it remains behind the
-    // production ingress boundary and is advertised only with operator auth.
+    // Public discovery bypasses the tailnet check. A2A transports also bypass
+    // that network check but are mounted after mandatory operator Bearer auth.
     const a2aBridge = await createA2ABridge(services, agents);
     a2aBridge?.mountAgentCard(expressApp);
 

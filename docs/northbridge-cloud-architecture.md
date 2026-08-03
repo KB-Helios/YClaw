@@ -5,7 +5,7 @@
 ```text
 NorthBridge-Chat / framework clients / operators
                     |
-          HTTPS + restricted ingress
+                    HTTPS
                     |
           AWS ALB (Agent Card + /a2a/*)
           public discovery | Bearer RBAC
@@ -24,10 +24,9 @@ NorthBridge-Chat / framework clients / operators
 Mission Control is the human approval and observability surface. Core owns authority,
 task lifecycle, local agent execution, synthesis, and audit. AO owns isolated codegen
 workspaces. Databases, Redis, and AO remain private; only ALB-routed HTTP surfaces are
-reachable from allowed ingress networks.
-The Agent Card is public only at the HTTP-auth layer so A2A discovery works;
-ALB CIDRs/Tailscale still restrict network ingress, and every `/a2a/*` transport
-request requires an authenticated operator Bearer key.
+reachable. The Agent Card is public for A2A discovery and every `/a2a/*` transport
+request requires an authenticated operator Bearer key. Non-A2A operator routes remain
+behind the Tailscale boundary.
 
 ## AWS Contract Implemented Here
 
@@ -37,8 +36,9 @@ request requires an authenticated operator Bearer key.
 - Participant cap, deadline, provider/documentation URLs, and remote allowlist are Terraform variables.
 - ALB idle timeout is derived from two participant deadlines plus a safety margin so
   synchronous participant and synthesis phases do not lose their client connection.
-- Remote Bearer tokens are an arbitrary sensitive map merged into the existing Secrets
-  Manager module and injected into ECS by ARN.
+- Remote Bearer tokens use a dedicated `A2A_*_TOKEN` secret map merged into the existing
+  Secrets Manager module and injected into ECS by ARN. Core credentials always win on
+  key collisions.
 - Core fails closed in production when MongoDB-backed task state is unhealthy.
 - Redis pub/sub fans cancellation to the replica that owns the active execution; an
   unhealthy coordination plane leaves the durable task unchanged instead of reporting
@@ -53,7 +53,7 @@ Use `deploy/aws/terraform.tfvars.example` as the non-secret template. Production
 1. A domain and matching ACM certificate; A2A production discovery rejects HTTP.
 2. `KB-Helios/NorthBridge-Chat` and `KB-Helios/YClaw` in `yclaw_repos`.
 3. Root operator, event-bus, AO, GitHub App, LLM, database, and remote-agent secrets from protected inputs.
-4. Explicit ingress CIDRs or Tailscale policy for every A2A caller.
+4. Operator Bearer keys for every A2A caller; rotate and revoke them through Mission Control.
 5. Remote definitions in `a2a_remote_agents` and matching token keys in
    `a2a_remote_agent_secrets`.
 

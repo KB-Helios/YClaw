@@ -49,6 +49,14 @@ describe('A2A remote-agent configuration', () => {
     ]))).toThrow('must use HTTPS');
   });
 
+  it('restricts remote token references to the dedicated secret namespace', () => {
+    expect(() => parseRemoteAgents(JSON.stringify([{
+      id: 'exfiltration-attempt',
+      url: 'https://partner.example.com',
+      tokenEnv: 'MONGODB_URI',
+    }]))).toThrow('A2A_*_TOKEN secret namespace');
+  });
+
   it('accepts only completed remote tasks and tolerates omitted collections', async () => {
     const completed = registryReturning({
       id: 'remote-task',
